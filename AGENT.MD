@@ -65,6 +65,10 @@
 - Detect the pending roll result from `CHAT_MSG_SYSTEM` and resolve the winner against the recorded snapshot.
 - The UI should prominently show the winner number and matching player name after a roll.
 - Winner buttons should send `You win ROUND X come closer! :)` through say or whisper as separate explicit actions.
+- Reward templates should start with `10 GOLD!`, `20 GOLD!`, and `KROLL BLADE BOSS`.
+- Reward templates must be expandable from the UI.
+- Reward templates must persist through `MicroGamesDB.rewardTemplates`.
+- Reward yells must be explicit button actions and must not be automatic after a roll.
 - Keep the detailed model in `docs/Rounds.md` in sync with implementation changes.
 
 ## UI Model

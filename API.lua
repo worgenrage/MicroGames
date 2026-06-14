@@ -16,7 +16,37 @@ local lastWinnerRound = nil
 local lastWinnerNumber = nil
 local lastWinnerName = nil
 local numberWhisperText = "Your MG number is: XX"
+local defaultRewardTemplates = {
+    "10 GOLD!",
+    "20 GOLD!",
+    "KROLL BLADE BOSS"
+}
+local rewardTemplates = nil
 local eventFrame = CreateFrame("Frame")
+
+local function CopyDefaultRewardTemplates()
+    local templates = {}
+
+    for index = 1, #defaultRewardTemplates do
+        templates[index] = defaultRewardTemplates[index]
+    end
+
+    return templates
+end
+
+local function EnsureRewardTemplates()
+    if type(MicroGamesDB) ~= "table" then
+        MicroGamesDB = {}
+    end
+
+    if type(MicroGamesDB.rewardTemplates) ~= "table" or #MicroGamesDB.rewardTemplates == 0 then
+        MicroGamesDB.rewardTemplates = CopyDefaultRewardTemplates()
+    end
+
+    rewardTemplates = MicroGamesDB.rewardTemplates
+
+    return rewardTemplates
+end
 
 local function BuildNumberMessage(number)
     local numberText = tostring(number)
@@ -39,6 +69,10 @@ end
 
 local function SendSayMessage(message)
     C_ChatInfo.SendChatMessage(message, "SAY")
+end
+
+local function SendYellMessage(message)
+    C_ChatInfo.SendChatMessage(message, "YELL")
 end
 
 local function ParseRollMessage(message)
@@ -319,6 +353,77 @@ function API.SendWinnerWhisper()
     end
 
     SendWhisper(message, lastWinnerName)
+
+    return true
+end
+
+function API.GetRewardTemplates()
+    local templates = {}
+    local savedTemplates = EnsureRewardTemplates()
+
+    for index = 1, #savedTemplates do
+        templates[index] = savedTemplates[index]
+    end
+
+    return templates
+end
+
+function API.AddRewardTemplate(text)
+    local savedTemplates = EnsureRewardTemplates()
+
+    if type(text) ~= "string" or text == "" then
+        return false
+    end
+
+    savedTemplates[#savedTemplates + 1] = text
+
+    return true
+end
+
+function API.RemoveRewardTemplate(index)
+    local savedTemplates = EnsureRewardTemplates()
+
+    if type(index) ~= "number" or index < 1 or index > #savedTemplates then
+        return false
+    end
+
+    table.remove(savedTemplates, index)
+
+    return true
+end
+
+function API.BuildRewardYellMessage(rewardText)
+    if type(rewardText) ~= "string" or rewardText == "" then
+        return nil
+    end
+
+    if lastWinnerName and lastWinnerRound then
+        return tostring(lastWinnerName) .. " wins ROUND " .. tostring(lastWinnerRound) .. " reward: " .. rewardText
+    end
+
+    if lastWinnerRound then
+        return "ROUND " .. tostring(lastWinnerRound) .. " reward: " .. rewardText
+    end
+
+    return "Reward: " .. rewardText
+end
+
+function API.SendRewardYell(index)
+    local savedTemplates = EnsureRewardTemplates()
+    local rewardText = savedTemplates[index]
+    local message
+
+    if not rewardText or not lastWinnerNumber then
+        return false
+    end
+
+    message = API.BuildRewardYellMessage(rewardText)
+
+    if not message then
+        return false
+    end
+
+    SendYellMessage(message)
 
     return true
 end

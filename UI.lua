@@ -7,14 +7,20 @@ local API = addon.API
 local UI = addon.UI
 
 local FRAME_WIDTH = 460
-local FRAME_HEIGHT = 520
+local FRAME_HEIGHT = 620
 local ROWS_PER_PAGE = 12
+local REWARD_BUTTONS_PER_PAGE = 6
+local REWARD_ROWS_PER_PAGE = 6
 
 local frame
 local tabs = {}
 local pages = {}
 local rosterRows = {}
+local rewardButtons = {}
+local rewardRows = {}
 local rosterPage = 1
+local rewardButtonPage = 1
+local rewardSettingsPage = 1
 local statusText
 local activeText
 local countText
@@ -28,6 +34,9 @@ local whisperEditBox
 local whisperPreviewText
 local delayEditBox
 local rosterPageText
+local rewardButtonPageText
+local rewardSettingsPageText
+local rewardEditBox
 
 local function SetStatus(text)
     if statusText then
@@ -118,9 +127,73 @@ local function RefreshRoster()
     end
 end
 
+local function RefreshRewardButtons()
+    local templates = API.GetRewardTemplates()
+    local totalPages = math.max(1, math.ceil(#templates / REWARD_BUTTONS_PER_PAGE))
+    local startIndex
+
+    if rewardButtonPage > totalPages then
+        rewardButtonPage = totalPages
+    end
+
+    startIndex = ((rewardButtonPage - 1) * REWARD_BUTTONS_PER_PAGE) + 1
+
+    for buttonIndex = 1, REWARD_BUTTONS_PER_PAGE do
+        local rewardIndex = startIndex + buttonIndex - 1
+        local text = templates[rewardIndex]
+        local button = rewardButtons[buttonIndex]
+
+        if text then
+            button.rewardIndex = rewardIndex
+            button:SetText(text)
+            button:Show()
+        else
+            button.rewardIndex = nil
+            button:Hide()
+        end
+    end
+
+    if rewardButtonPageText then
+        rewardButtonPageText:SetText("Rewards " .. tostring(rewardButtonPage) .. " / " .. tostring(totalPages))
+    end
+end
+
+local function RefreshRewardSettings()
+    local templates = API.GetRewardTemplates()
+    local totalPages = math.max(1, math.ceil(#templates / REWARD_ROWS_PER_PAGE))
+    local startIndex
+
+    if rewardSettingsPage > totalPages then
+        rewardSettingsPage = totalPages
+    end
+
+    startIndex = ((rewardSettingsPage - 1) * REWARD_ROWS_PER_PAGE) + 1
+
+    for rowIndex = 1, REWARD_ROWS_PER_PAGE do
+        local rewardIndex = startIndex + rowIndex - 1
+        local text = templates[rewardIndex]
+        local row = rewardRows[rowIndex]
+
+        if text then
+            row.rewardIndex = rewardIndex
+            row.text:SetText(text)
+            row:Show()
+        else
+            row.rewardIndex = nil
+            row:Hide()
+        end
+    end
+
+    if rewardSettingsPageText then
+        rewardSettingsPageText:SetText("Page " .. tostring(rewardSettingsPage) .. " / " .. tostring(totalPages))
+    end
+end
+
 local function RefreshAll()
     UpdateSummary()
     RefreshRoster()
+    RefreshRewardButtons()
+    RefreshRewardSettings()
 
     if whisperEditBox then
         whisperEditBox:SetText(API.GetNumberWhisperText())
@@ -128,6 +201,10 @@ local function RefreshAll()
 
     if delayEditBox then
         delayEditBox:SetText(tostring(API.GetRoundRollDelay()))
+    end
+
+    if rewardEditBox then
+        rewardEditBox:SetText("")
     end
 end
 
@@ -248,26 +325,57 @@ local function CreateControlPage(parent)
         end
     end)
 
-    CreateButton(page, "Stop", 0, -278, 92, 24, function()
+    CreateLabel(page, "Reward yell templates", 0, -278)
+
+    for i = 1, REWARD_BUTTONS_PER_PAGE do
+        local column = (i - 1) % 2
+        local row = math.floor((i - 1) / 2)
+        local button = CreateButton(page, "Reward", column * 210, -302 - (row * 28), 198, 24, function(self)
+            if self.rewardIndex and API.SendRewardYell(self.rewardIndex) then
+                SetStatus("Reward yelled.")
+            else
+                SetStatus("No winner or reward template selected.")
+            end
+        end)
+
+        rewardButtons[i] = button
+    end
+
+    CreateButton(page, "Prev Rewards", 0, -390, 104, 22, function()
+        if rewardButtonPage > 1 then
+            rewardButtonPage = rewardButtonPage - 1
+        end
+
+        RefreshRewardButtons()
+    end)
+
+    rewardButtonPageText = CreateValue(page, 128, -393, 150)
+
+    CreateButton(page, "Next Rewards", 304, -390, 116, 22, function()
+        rewardButtonPage = rewardButtonPage + 1
+        RefreshRewardButtons()
+    end)
+
+    CreateButton(page, "Stop", 0, -428, 92, 24, function()
         API.StopRaidNumbering()
         SetStatus("Numbering stopped. Recorded data kept.")
         RefreshAll()
     end)
 
-    CreateButton(page, "Reset", 104, -278, 92, 24, function()
+    CreateButton(page, "Reset", 104, -428, 92, 24, function()
         API.ResetRaidNumbering()
         rosterPage = 1
         SetStatus("Numbering and rounds reset.")
         RefreshAll()
     end)
 
-    CreateButton(page, "Reset Rounds", 208, -278, 116, 24, function()
+    CreateButton(page, "Reset Rounds", 208, -428, 116, 24, function()
         API.ResetRounds()
         SetStatus("Rounds reset.")
         RefreshAll()
     end)
 
-    statusText = CreateValue(page, 0, -326, 410)
+    statusText = CreateValue(page, 0, -470, 410)
     statusText:SetText("Ready.")
 
     return page
@@ -363,6 +471,59 @@ local function CreateSettingsPage(parent)
         delayEditBox:SetText(tostring(API.GetRoundRollDelay()))
         SetStatus("Round delay saved.")
         RefreshAll()
+    end)
+
+    CreateLabel(page, "Reward yell templates", 0, -214)
+    rewardEditBox = CreateEditBox(page, 0, -242, 292, 24)
+
+    CreateButton(page, "Add Reward", 306, -242, 104, 24, function()
+        if API.AddRewardTemplate(rewardEditBox:GetText()) then
+            SetStatus("Reward template added.")
+        else
+            SetStatus("Enter reward text first.")
+        end
+
+        RefreshAll()
+    end)
+
+    for i = 1, REWARD_ROWS_PER_PAGE do
+        local row = CreateFrame("Frame", nil, page)
+        row:SetPoint("TOPLEFT", page, "TOPLEFT", 0, -282 - ((i - 1) * 26))
+        row:SetSize(410, 24)
+
+        row.text = row:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+        row.text:SetPoint("LEFT", row, "LEFT", 0, 0)
+        row.text:SetWidth(292)
+        row.text:SetJustifyH("LEFT")
+
+        row.removeButton = CreateButton(row, "Remove", 318, -1, 82, 20, function(self)
+            local parentRow = self:GetParent()
+
+            if parentRow.rewardIndex and API.RemoveRewardTemplate(parentRow.rewardIndex) then
+                SetStatus("Reward template removed.")
+            else
+                SetStatus("No reward template selected.")
+            end
+
+            RefreshAll()
+        end)
+
+        rewardRows[i] = row
+    end
+
+    CreateButton(page, "Previous", 0, -448, 92, 24, function()
+        if rewardSettingsPage > 1 then
+            rewardSettingsPage = rewardSettingsPage - 1
+        end
+
+        RefreshRewardSettings()
+    end)
+
+    rewardSettingsPageText = CreateValue(page, 132, -452, 150)
+
+    CreateButton(page, "Next", 318, -448, 92, 24, function()
+        rewardSettingsPage = rewardSettingsPage + 1
+        RefreshRewardSettings()
     end)
 
     return page
