@@ -36,4 +36,16 @@ Rerolls are saved as additional roll entries inside the same round.
 
 ## History
 
-History display is not implemented yet. A future History tab should read `addon.API.GetGameHistory()`.
+The `History` tab reads `addon.API.GetGameHistory()` and displays completed sessions.
+
+It shows:
+
+- completed session rows with start time, stopped time, round count, and player count
+- selected session details
+- final winner
+- reward count
+- paginated round results for the selected session
+- winner and roll timestamp per round
+- reward text and reward timestamp per round
+
+The Settings tab includes a two-step `RESET ALL` control that clears `MicroGamesDB`, including active session and completed history.

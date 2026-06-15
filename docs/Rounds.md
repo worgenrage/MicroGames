@@ -9,10 +9,12 @@ Rounds do not advance while the addon is loading.
 - `addon.API.RoundRoll()` is the intended handler for a future `Round Roll` UX button.
 - Each `RoundRoll` call increments the current round by 1.
 - `addon.API.RerollCurrentRound()` rolls again for the current round without incrementing the round counter.
+- A new roll or reroll cannot start while a previous delayed roll is pending.
 - The UI should show the current round and the previous completed round.
 - During `ROUND 1`, there is no previous completed round to show.
 - The addon announces the round in raid chat as `ROUND X`.
 - After a short delay, the addon rolls from 1 to the number of players recorded by `StartRaidNumbering()`.
+- The delayed roll captures the recorded range at button press time.
 - The roll range uses the recorded snapshot count, not the current live raid size.
 - Example: if `StartRaidNumbering()` recorded 37 players, `RoundRoll()` rolls 1-37.
 - After the roll result is detected, the addon stores the winner number and the matching recorded player name.

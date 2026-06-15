@@ -11,6 +11,8 @@ local FRAME_HEIGHT = 640
 local ROWS_PER_PAGE = 12
 local REWARD_BUTTONS_PER_PAGE = 6
 local REWARD_ROWS_PER_PAGE = 6
+local HISTORY_ROWS_PER_PAGE = 5
+local HISTORY_ROUND_ROWS_PER_PAGE = 6
 
 local frame
 local tabs = {}
@@ -19,9 +21,14 @@ local rosterRows = {}
 local controlRewardButtons = {}
 local rewardButtons = {}
 local rewardRows = {}
+local historyRows = {}
+local historyRoundRows = {}
 local rosterPage = 1
 local rewardButtonPage = 1
 local rewardSettingsPage = 1
+local historyPage = 1
+local historyRoundPage = 1
+local selectedHistoryIndex = nil
 local statusText
 local rosterStatusText
 local activeText
@@ -39,11 +46,18 @@ local whisperEditBox
 local whisperPreviewText
 local delayEditBox
 local rosterPageText
-local rewardButtonPageText
+local controlRewardButtonPageText
+local rewardsRewardButtonPageText
 local rewardSettingsPageText
+local historyPageText
+local historyDetailText
+local historyRoundPageText
 local rewardEditBox
+local resetAllConfirmText
+local resetAllConfirmButton
 local startGameButton
 local stopGameButton
+local roundRollButton
 local rosterStartButton
 local rosterSendButton
 local rosterStopButton
@@ -85,6 +99,7 @@ local function UpdateSummary()
     local winner = API.GetLastWinner()
     local winnerMessage = API.BuildWinnerMessage()
     local session = API.GetGameSessionSummary()
+    local canModifyRoster = API.CanModifyRoster()
 
     if activeText then
         if API.HasRaidNumbers() then
@@ -110,10 +125,11 @@ local function UpdateSummary()
 
     SetButtonEnabled(startGameButton, not session.active)
     SetButtonEnabled(stopGameButton, session.active)
-    SetButtonEnabled(rosterStartButton, not session.active)
-    SetButtonEnabled(rosterSendButton, not session.active)
-    SetButtonEnabled(rosterStopButton, not session.active)
-    SetButtonEnabled(rosterResetButton, not session.active)
+    SetButtonEnabled(rosterStartButton, canModifyRoster)
+    SetButtonEnabled(rosterSendButton, canModifyRoster)
+    SetButtonEnabled(rosterStopButton, canModifyRoster)
+    SetButtonEnabled(rosterResetButton, canModifyRoster)
+    SetButtonEnabled(roundRollButton, count > 0 and not API.HasPendingRoll())
 
     if roundText then
         if round > 0 then
@@ -137,7 +153,7 @@ local function UpdateSummary()
 
     if rerollButton then
         rerollButton:SetText(API.BuildRerollButtonText())
-        SetButtonEnabled(rerollButton, round > 0 and count > 0)
+        SetButtonEnabled(rerollButton, round > 0 and count > 0 and not API.HasPendingRoll())
     end
 
     if winnerText then
@@ -239,8 +255,12 @@ local function RefreshRewardButtons()
         UpdateButton(rewardButtons[buttonIndex], rewardIndex, text)
     end
 
-    if rewardButtonPageText then
-        rewardButtonPageText:SetText("Rewards " .. tostring(rewardButtonPage) .. " / " .. tostring(totalPages))
+    if controlRewardButtonPageText then
+        controlRewardButtonPageText:SetText("Rewards " .. tostring(rewardButtonPage) .. " / " .. tostring(totalPages))
+    end
+
+    if rewardsRewardButtonPageText then
+        rewardsRewardButtonPageText:SetText("Rewards " .. tostring(rewardButtonPage) .. " / " .. tostring(totalPages))
     end
 end
 
@@ -275,11 +295,173 @@ local function RefreshRewardSettings()
     end
 end
 
+local function BuildHistoryRowText(session, index)
+    local startedAt = session.startedAt or "-"
+    local stoppedAt = session.stoppedAt or "-"
+    local rounds = session.totalRounds or session.currentRound or 0
+    local players = session.finalAssignedCount or session.assignedCount or 0
+
+    return "#" .. tostring(index) .. "  " .. tostring(startedAt) .. " - rounds " .. tostring(rounds) .. " - players " .. tostring(players) .. " - stopped " .. tostring(stoppedAt)
+end
+
+local function CompactTime(timestamp)
+    local timeText
+
+    if type(timestamp) ~= "string" then
+        return "-"
+    end
+
+    timeText = string.match(timestamp, "%d%d%d%d%-%d%d%-%d%d (%d%d:%d%d:%d%d)")
+
+    return timeText or timestamp
+end
+
+local function BuildHistoryDetailText(session, index)
+    local lines = {}
+    local rounds = session.rounds or {}
+    local rewards = session.rewards or {}
+    local winnerName = session.finalWinnerName or "-"
+    local winnerNumber = session.finalWinnerNumber or "-"
+
+    lines[#lines + 1] = "Session #" .. tostring(index)
+    lines[#lines + 1] = "Started: " .. tostring(session.startedAt or "-")
+    lines[#lines + 1] = "Stopped: " .. tostring(session.stoppedAt or "-")
+    lines[#lines + 1] = "Players: " .. tostring(session.finalAssignedCount or session.assignedCount or 0)
+    lines[#lines + 1] = "Rounds: " .. tostring(session.totalRounds or session.currentRound or #rounds)
+    lines[#lines + 1] = "Final winner: #" .. tostring(winnerNumber) .. " - " .. tostring(winnerName)
+    lines[#lines + 1] = "Rewards sent: " .. tostring(#rewards)
+
+    return table.concat(lines, "\n")
+end
+
+local function BuildRewardsByRound(session)
+    local rewards = session.rewards or {}
+    local rewardsByRound = {}
+
+    for index = 1, #rewards do
+        local reward = rewards[index]
+        local roundNumber = reward.round or 0
+        local rewardText = tostring(reward.reward or "-")
+        local sentAt = CompactTime(reward.sentAt)
+        local line = rewardText .. " @" .. sentAt
+
+        if type(rewardsByRound[roundNumber]) ~= "table" then
+            rewardsByRound[roundNumber] = {}
+        end
+
+        rewardsByRound[roundNumber][#rewardsByRound[roundNumber] + 1] = line
+    end
+
+    return rewardsByRound
+end
+
+local function BuildRoundHistoryText(round, rewardsByRound)
+    local rollNumber = round.rollNumber or "-"
+    local winnerName = round.winnerName or "-"
+    local rolledAt = CompactTime(round.rolledAt or round.announcedAt)
+    local roundNumber = round.round or "?"
+    local rewards = rewardsByRound[round.round or 0]
+    local rewardText = "-"
+
+    if type(rewards) == "table" and #rewards > 0 then
+        rewardText = table.concat(rewards, "; ")
+    end
+
+    return "R" .. tostring(roundNumber) .. " | " .. tostring(rolledAt) .. " | #" .. tostring(rollNumber) .. " " .. tostring(winnerName) .. " | " .. rewardText
+end
+
+local function RefreshHistoryRounds(session)
+    local rounds = {}
+    local rewardsByRound = {}
+    local totalPages
+    local startIndex
+
+    if type(session) == "table" then
+        rounds = session.rounds or {}
+        rewardsByRound = BuildRewardsByRound(session)
+    end
+
+    totalPages = math.max(1, math.ceil(#rounds / HISTORY_ROUND_ROWS_PER_PAGE))
+
+    if historyRoundPage > totalPages then
+        historyRoundPage = totalPages
+    end
+
+    startIndex = ((historyRoundPage - 1) * HISTORY_ROUND_ROWS_PER_PAGE) + 1
+
+    for rowIndex = 1, HISTORY_ROUND_ROWS_PER_PAGE do
+        local round = rounds[startIndex + rowIndex - 1]
+        local row = historyRoundRows[rowIndex]
+
+        if row then
+            if round then
+                row.text:SetText(BuildRoundHistoryText(round, rewardsByRound))
+                row:Show()
+            else
+                row:Hide()
+            end
+        end
+    end
+
+    if historyRoundPageText then
+        historyRoundPageText:SetText("Rounds " .. tostring(historyRoundPage) .. " / " .. tostring(totalPages))
+    end
+end
+
+local function RefreshHistory()
+    local history = API.GetGameHistory()
+    local totalPages = math.max(1, math.ceil(#history / HISTORY_ROWS_PER_PAGE))
+    local startIndex
+
+    if historyPage > totalPages then
+        historyPage = totalPages
+    end
+
+    if not selectedHistoryIndex and #history > 0 then
+        selectedHistoryIndex = #history
+        historyRoundPage = 1
+    end
+
+    startIndex = ((historyPage - 1) * HISTORY_ROWS_PER_PAGE) + 1
+
+    for rowIndex = 1, HISTORY_ROWS_PER_PAGE do
+        local historyIndex = startIndex + rowIndex - 1
+        local session = history[historyIndex]
+        local row = historyRows[rowIndex]
+
+        if row then
+            if session then
+                row.historyIndex = historyIndex
+                row.text:SetText(BuildHistoryRowText(session, historyIndex))
+                row:Show()
+            else
+                row.historyIndex = nil
+                row:Hide()
+            end
+        end
+    end
+
+    if historyPageText then
+        historyPageText:SetText("Page " .. tostring(historyPage) .. " / " .. tostring(totalPages))
+    end
+
+    if historyDetailText then
+        if selectedHistoryIndex and history[selectedHistoryIndex] then
+            historyDetailText:SetText(BuildHistoryDetailText(history[selectedHistoryIndex], selectedHistoryIndex))
+            RefreshHistoryRounds(history[selectedHistoryIndex])
+        else
+            historyDetailText:SetText("No completed sessions yet.")
+            RefreshHistoryRounds(nil)
+        end
+    end
+end
+
 local function RefreshAll()
     UpdateSummary()
     RefreshRoster()
     RefreshRewardButtons()
     RefreshRewardSettings()
+    RefreshHistory()
 
     if whisperEditBox then
         whisperEditBox:SetText(API.GetNumberWhisperText())
@@ -365,7 +547,7 @@ local function CreateControlPage(parent)
     countText = CreateValue(page, 0, -44, 160)
     activeText = CreateValue(page, 180, -44, 180)
 
-    CreateButton(page, "Round Roll", 0, -78, 410, 42, function()
+    roundRollButton = CreateButton(page, "Round Roll", 0, -78, 410, 42, function()
         local ok, result = API.RoundRoll()
 
         if ok then
@@ -449,7 +631,7 @@ local function CreateControlPage(parent)
         RefreshRewardButtons()
     end)
 
-    rewardButtonPageText = CreateValue(page, 46, -413, 130)
+    controlRewardButtonPageText = CreateValue(page, 46, -413, 130)
 
     CreateButton(page, ">", 176, -410, 34, 20, function()
         rewardButtonPage = rewardButtonPage + 1
@@ -630,7 +812,7 @@ local function CreateRewardsPage(parent)
         RefreshRewardButtons()
     end)
 
-    rewardButtonPageText = CreateValue(page, 152, -158, 130)
+    rewardsRewardButtonPageText = CreateValue(page, 152, -158, 130)
 
     CreateButton(page, "Next Rewards", 286, -154, 124, 24, function()
         rewardButtonPage = rewardButtonPage + 1
@@ -695,6 +877,90 @@ local function CreateRewardsPage(parent)
     return page
 end
 
+local function CreateHistoryPage(parent)
+    local page = CreateFrame("Frame", nil, parent)
+    page:SetPoint("TOPLEFT", parent, "TOPLEFT", 20, -92)
+    page:SetPoint("BOTTOMRIGHT", parent, "BOTTOMRIGHT", -20, 44)
+
+    CreateLabel(page, "Completed sessions", 0, 0)
+
+    for i = 1, HISTORY_ROWS_PER_PAGE do
+        local row = CreateFrame("Frame", nil, page)
+        row:SetPoint("TOPLEFT", page, "TOPLEFT", 0, -28 - ((i - 1) * 28))
+        row:SetSize(410, 24)
+
+        row.text = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        row.text:SetPoint("LEFT", row, "LEFT", 0, 0)
+        row.text:SetWidth(320)
+        row.text:SetJustifyH("LEFT")
+
+        row.viewButton = CreateButton(row, "View", 334, -1, 66, 20, function(self)
+            local parentRow = self:GetParent()
+
+            selectedHistoryIndex = parentRow.historyIndex
+            historyRoundPage = 1
+            RefreshHistory()
+        end)
+
+        historyRows[i] = row
+    end
+
+    CreateButton(page, "Previous", 0, -176, 92, 24, function()
+        if historyPage > 1 then
+            historyPage = historyPage - 1
+        end
+
+        RefreshHistory()
+    end)
+
+    historyPageText = CreateValue(page, 132, -180, 150)
+
+    CreateButton(page, "Next", 318, -176, 92, 24, function()
+        historyPage = historyPage + 1
+        RefreshHistory()
+    end)
+
+    CreateLabel(page, "Session details", 0, -220)
+
+    historyDetailText = page:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    historyDetailText:SetPoint("TOPLEFT", page, "TOPLEFT", 0, -244)
+    historyDetailText:SetWidth(410)
+    historyDetailText:SetJustifyH("LEFT")
+    historyDetailText:SetJustifyV("TOP")
+
+    CreateLabel(page, "Round rewards", 0, -344)
+
+    for i = 1, HISTORY_ROUND_ROWS_PER_PAGE do
+        local row = CreateFrame("Frame", nil, page)
+        row:SetPoint("TOPLEFT", page, "TOPLEFT", 0, -370 - ((i - 1) * 20))
+        row:SetSize(410, 18)
+
+        row.text = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        row.text:SetPoint("LEFT", row, "LEFT", 0, 0)
+        row.text:SetWidth(410)
+        row.text:SetJustifyH("LEFT")
+
+        historyRoundRows[i] = row
+    end
+
+    CreateButton(page, "<", 0, -482, 34, 20, function()
+        if historyRoundPage > 1 then
+            historyRoundPage = historyRoundPage - 1
+        end
+
+        RefreshHistory()
+    end)
+
+    historyRoundPageText = CreateValue(page, 46, -485, 130)
+
+    CreateButton(page, ">", 176, -482, 34, 20, function()
+        historyRoundPage = historyRoundPage + 1
+        RefreshHistory()
+    end)
+
+    return page
+end
+
 local function CreateSettingsPage(parent)
     local page = CreateFrame("Frame", nil, parent)
     page:SetPoint("TOPLEFT", parent, "TOPLEFT", 20, -92)
@@ -732,6 +998,50 @@ local function CreateSettingsPage(parent)
         SetStatus("Round delay saved.")
         RefreshAll()
     end)
+
+    CreateLabel(page, "Danger zone", 0, -230)
+
+    CreateButton(page, "RESET ALL", 0, -258, 120, 24, function()
+        if resetAllConfirmText then
+            resetAllConfirmText:Show()
+        end
+
+        if resetAllConfirmButton then
+            resetAllConfirmButton:Show()
+        end
+
+        SetStatus("Reset confirmation required.")
+    end)
+
+    resetAllConfirmText = page:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    resetAllConfirmText:SetPoint("TOPLEFT", page, "TOPLEFT", 0, -296)
+    resetAllConfirmText:SetWidth(410)
+    resetAllConfirmText:SetJustifyH("LEFT")
+    resetAllConfirmText:SetText("WARNING: This permanently deletes ALL MicroGames SavedVariables data, including history, active session, roster, rewards, settings, and round data. Are you sure?")
+    resetAllConfirmText:SetTextColor(1, 0.12, 0.12)
+    resetAllConfirmText:Hide()
+
+    resetAllConfirmButton = CreateButton(page, "YES, DELETE ALL DATA", 0, -348, 190, 26, function()
+        API.ResetAllData()
+        rosterPage = 1
+        rewardButtonPage = 1
+        rewardSettingsPage = 1
+        historyPage = 1
+        historyRoundPage = 1
+        selectedHistoryIndex = nil
+
+        if resetAllConfirmText then
+            resetAllConfirmText:Hide()
+        end
+
+        if resetAllConfirmButton then
+            resetAllConfirmButton:Hide()
+        end
+
+        SetStatus("All MicroGames data reset.")
+        RefreshAll()
+    end)
+    resetAllConfirmButton:Hide()
 
     return page
 end
@@ -790,6 +1100,7 @@ function UI.Create()
     pages.control = CreateControlPage(frame)
     pages.roster = CreateRosterPage(frame)
     pages.rewards = CreateRewardsPage(frame)
+    pages.history = CreateHistoryPage(frame)
     pages.settings = CreateSettingsPage(frame)
 
     tabs[1] = CreateFrame("Button", "MicroGamesTabControl", frame, "CharacterFrameTabButtonTemplate")
@@ -816,15 +1127,23 @@ function UI.Create()
         ShowPage("rewards")
     end)
 
-    tabs[4] = CreateFrame("Button", "MicroGamesTabSettings", frame, "CharacterFrameTabButtonTemplate")
+    tabs[4] = CreateFrame("Button", "MicroGamesTabHistory", frame, "CharacterFrameTabButtonTemplate")
     tabs[4]:SetPoint("LEFT", tabs[3], "RIGHT", -14, 0)
-    tabs[4]:SetText("Settings")
-    tabs[4].pageName = "settings"
+    tabs[4]:SetText("History")
+    tabs[4].pageName = "history"
     tabs[4]:SetScript("OnClick", function()
+        ShowPage("history")
+    end)
+
+    tabs[5] = CreateFrame("Button", "MicroGamesTabSettings", frame, "CharacterFrameTabButtonTemplate")
+    tabs[5]:SetPoint("LEFT", tabs[4], "RIGHT", -14, 0)
+    tabs[5]:SetText("Settings")
+    tabs[5].pageName = "settings"
+    tabs[5]:SetScript("OnClick", function()
         ShowPage("settings")
     end)
 
-    PanelTemplates_SetNumTabs(frame, 4)
+    PanelTemplates_SetNumTabs(frame, 5)
     ShowPage("control")
 
     return frame

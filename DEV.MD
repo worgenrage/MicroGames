@@ -83,6 +83,7 @@ addon.API.StopGameSession()
 addon.API.HasActiveGameSession()
 addon.API.GetGameSessionSummary()
 addon.API.GetGameHistory()
+addon.API.ResetAllData()
 addon.API.CanModifyRoster()
 ```
 
@@ -93,7 +94,7 @@ Rules:
 - `STOP GAME` stops the active session and appends it to `MicroGamesDB.history`.
 - Active sessions are stored in `MicroGamesDB.activeSession`.
 - Completed sessions are stored in `MicroGamesDB.history`.
-- While a game session is active, roster setup controls are locked except `Rounds 0`.
+- While a game session is active or a roll is pending, roster setup controls are locked except `Rounds 0`.
 
 Saved session data includes:
 
@@ -114,6 +115,7 @@ Main API:
 addon.API.RoundRoll()
 addon.API.RerollCurrentRound()
 addon.API.GetCurrentRound()
+addon.API.HasPendingRoll()
 addon.API.GetPreviousRound()
 addon.API.ResetRounds()
 addon.API.BuildRoundMessage(roundNumber)
@@ -131,6 +133,7 @@ Rules:
 - After the configured delay, it rolls `RandomRoll(1, assignedCount)`.
 - Roll range is based on the recorded raid snapshot count.
 - `RerollCurrentRound()` rolls again for the current round without incrementing the round counter.
+- `RoundRoll()` and `RerollCurrentRound()` return `ROLL_PENDING` while a previous delayed roll is still pending.
 - Rerolls are saved under the same round as additional roll entries.
 - Roll result detection listens to `CHAT_MSG_SYSTEM`.
 - Only the game master's own pending roll is accepted.
@@ -197,6 +200,7 @@ Tabs:
 - `Control`
 - `Roster`
 - `Rewards`
+- `History`
 - `Settings`
 
 ### Control
@@ -259,12 +263,28 @@ Contains:
 - remove reward template
 - reward template pagination
 
+### History
+
+Completed game session viewer.
+
+Contains:
+
+- completed session list
+- history pagination
+- selected session details
+- paginated round results for the selected session
+- winner and roll timestamp per round
+- reward text and reward timestamp per round
+
 ### Settings
 
 Contains:
 
 - number whisper text
 - round roll delay
+- two-step `RESET ALL` data wipe control
+
+`RESET ALL` clears runtime state and resets `MicroGamesDB`, including active session, completed history, reward templates, round state, roster snapshot, and settings.
 
 Both persist through SavedVariables.
 
@@ -288,7 +308,5 @@ git diff --check
 
 ## Known Next Steps
 
-- Add a fifth `History` tab.
-- Display saved `MicroGamesDB.history` sessions.
 - Consider chat throttling for mass whisper sending.
 - Consider more robust localized roll-message parsing if non-English clients are targeted later.

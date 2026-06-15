@@ -344,6 +344,24 @@ function API.ResetRaidNumbering()
     PersistActiveSessionState()
 end
 
+function API.ResetAllData()
+    numbersByName = {}
+    namesByNumber = {}
+    assignedCount = 0
+    assignmentActive = false
+    currentRound = 0
+    pendingRollRound = nil
+    lastWinnerRound = nil
+    lastWinnerNumber = nil
+    lastWinnerName = nil
+    MicroGamesDB = {}
+    EnsureSettings()
+    EnsureRewardTemplates()
+    EnsureHistory()
+
+    return true
+end
+
 function API.HasRaidNumbers()
     return assignmentActive
 end
@@ -439,6 +457,10 @@ end
 
 function API.GetCurrentRound()
     return currentRound
+end
+
+function API.HasPendingRoll()
+    return pendingRollRound ~= nil
 end
 
 function API.GetPreviousRound()
@@ -641,6 +663,10 @@ function API.StartGameSession()
         API.StartRaidNumbering()
     end
 
+    if assignedCount <= 0 then
+        return false, "NO_RAID_NUMBERS"
+    end
+
     session = {
         status = "active",
         startedAt = GetTimestamp(),
@@ -690,7 +716,7 @@ function API.HasActiveGameSession()
 end
 
 function API.CanModifyRoster()
-    return not API.HasActiveGameSession()
+    return not API.HasActiveGameSession() and not API.HasPendingRoll()
 end
 
 function API.GetGameSessionSummary()
@@ -723,24 +749,32 @@ end
 
 function API.RoundRoll()
     local delay = API.GetRoundRollDelay()
+    local rollRound
+    local rollMax
 
     if assignedCount <= 0 then
         return false, "NO_RAID_NUMBERS"
     end
 
+    if pendingRollRound then
+        return false, "ROLL_PENDING"
+    end
+
     currentRound = currentRound + 1
     pendingRollRound = currentRound
+    rollRound = currentRound
+    rollMax = assignedCount
     RecordSessionRound(currentRound)
     PersistActiveSessionState()
 
     SendRaidMessage(API.BuildRoundMessage(currentRound))
 
     C_Timer.After(delay, function()
-        RandomRoll(1, assignedCount)
+        RandomRoll(1, rollMax)
     end)
 
     C_Timer.After(delay + 10, function()
-        if pendingRollRound == currentRound then
+        if pendingRollRound == rollRound then
             pendingRollRound = nil
             PersistActiveSessionState()
         end
@@ -752,6 +786,7 @@ end
 function API.RerollCurrentRound()
     local delay = API.GetRoundRollDelay()
     local rerollRound = currentRound
+    local rollMax = assignedCount
 
     if assignedCount <= 0 then
         return false, "NO_RAID_NUMBERS"
@@ -761,11 +796,15 @@ function API.RerollCurrentRound()
         return false, "NO_CURRENT_ROUND"
     end
 
+    if pendingRollRound then
+        return false, "ROLL_PENDING"
+    end
+
     pendingRollRound = rerollRound
     PersistActiveSessionState()
 
     C_Timer.After(delay, function()
-        RandomRoll(1, assignedCount)
+        RandomRoll(1, rollMax)
     end)
 
     C_Timer.After(delay + 10, function()
