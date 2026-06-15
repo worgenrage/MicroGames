@@ -1,0 +1,294 @@
+# MicroGames Development Notes
+
+## Project State
+
+MicroGames is a WoW Classic Era / Hardcore 1.15.8 addon.
+
+- TOC interface: `11508`
+- Lua target: Blizzard WoW addon sandbox, Lua 5.1 subset
+- Language server flavor: `classic_era`
+- Main files:
+  - `API.lua`
+  - `UI.lua`
+  - `MicroGames.lua`
+
+## Load And Commands
+
+- The addon registers:
+  - `/mg`
+  - `/microgames`
+- The UI is created lazily when the slash command is used.
+- The UI should not open automatically on load or `/reload`.
+- On login it prints:
+  `MicroGames loaded. Type /mg or /microgames to open.`
+
+## SavedVariables
+
+The addon uses:
+
+```toc
+## SavedVariables: MicroGamesDB
+```
+
+Current stored fields:
+
+- `MicroGamesDB.numberWhisperText`
+- `MicroGamesDB.roundRollDelay`
+- `MicroGamesDB.rewardTemplates`
+- `MicroGamesDB.activeSession`
+- `MicroGamesDB.history`
+
+## Raid Numbering
+
+Raid roster indexes are not used as stable game IDs during gameplay.
+
+Workflow:
+
+1. Take a snapshot of the current raid roster.
+2. Assign stable MG numbers by snapshot order.
+3. Store both number-to-name and name-to-number mappings.
+4. Do not shift numbers when players leave.
+
+Main API:
+
+```lua
+addon.API.StartRaidNumbering()
+addon.API.StopRaidNumbering()
+addon.API.ResetRaidNumbering()
+addon.API.CountRaidNumbers()
+addon.API.GetRaidNumberEntries()
+addon.API.GetRaidNumberByName(name)
+addon.API.GetRaidNameByNumber(number)
+addon.API.SendNumbers()
+addon.API.SendNumberWhisperToName(name)
+```
+
+Default number whisper:
+
+```text
+Your MG number is: XX
+```
+
+`XX` is replaced with the assigned MG number.
+
+## Game Sessions
+
+Game sessions persist across `/reload`, window close/open, and UI recreation.
+
+Main API:
+
+```lua
+addon.API.StartGameSession()
+addon.API.StopGameSession()
+addon.API.HasActiveGameSession()
+addon.API.GetGameSessionSummary()
+addon.API.GetGameHistory()
+addon.API.CanModifyRoster()
+```
+
+Rules:
+
+- `START GAME` starts a new active session.
+- If there is already an active session, `StartGameSession()` returns `ACTIVE_SESSION_EXISTS`.
+- `STOP GAME` stops the active session and appends it to `MicroGamesDB.history`.
+- Active sessions are stored in `MicroGamesDB.activeSession`.
+- Completed sessions are stored in `MicroGamesDB.history`.
+- While a game session is active, roster setup controls are locked except `Rounds 0`.
+
+Saved session data includes:
+
+- start and stop timestamps
+- roster snapshot
+- assigned count
+- round count
+- roll results
+- rerolls
+- winners
+- rewards
+
+## Rounds And Rolls
+
+Main API:
+
+```lua
+addon.API.RoundRoll()
+addon.API.RerollCurrentRound()
+addon.API.GetCurrentRound()
+addon.API.GetPreviousRound()
+addon.API.ResetRounds()
+addon.API.BuildRoundMessage(roundNumber)
+addon.API.BuildPreviousRoundMessage()
+addon.API.BuildRollCommand()
+addon.API.BuildRerollButtonText()
+addon.API.SetRoundRollDelay(seconds)
+addon.API.GetRoundRollDelay()
+```
+
+Rules:
+
+- `RoundRoll()` increments the round counter.
+- It announces `ROUND X` in raid chat.
+- After the configured delay, it rolls `RandomRoll(1, assignedCount)`.
+- Roll range is based on the recorded raid snapshot count.
+- `RerollCurrentRound()` rolls again for the current round without incrementing the round counter.
+- Rerolls are saved under the same round as additional roll entries.
+- Roll result detection listens to `CHAT_MSG_SYSTEM`.
+- Only the game master's own pending roll is accepted.
+- Other players' rolls are ignored.
+
+## Winner Actions
+
+Winner data is resolved by matching the roll result number to the recorded roster snapshot.
+
+Main API:
+
+```lua
+addon.API.GetLastWinner()
+addon.API.BuildLastWinnerText()
+addon.API.BuildWinnerMessage()
+addon.API.SendWinnerSay()
+addon.API.SendWinnerWhisper()
+```
+
+Winner message:
+
+```text
+You win ROUND X come closer! :)
+```
+
+## Rewards
+
+Reward templates are persisted in `MicroGamesDB.rewardTemplates`.
+
+Default reward templates:
+
+- `10 GOLD!`
+- `20 GOLD!`
+- `KROLL BLADE BOSS`
+
+Main API:
+
+```lua
+addon.API.GetRewardTemplates()
+addon.API.AddRewardTemplate(text)
+addon.API.RemoveRewardTemplate(index)
+addon.API.BuildRewardYellMessage(rewardText)
+addon.API.SendRewardYell(index)
+```
+
+Reward yell format:
+
+```text
+[WinnerName]: reward text
+```
+
+Reward yells are explicit button actions. They are never automatic after a roll.
+
+## UI
+
+The main UI is movable and uses high enough frame strata/level to avoid click-through into action bar addons:
+
+- `DIALOG` strata
+- frame level `100`
+- tabs are inside the main frame bounds
+
+Tabs:
+
+- `Control`
+- `Roster`
+- `Rewards`
+- `Settings`
+
+### Control
+
+Gameplay-focused tab.
+
+Contains:
+
+- round status
+- recorded member count
+- active game session status
+- large `Round Roll` button
+- smaller centered `Roll again for ROUND X` button
+- highlighted winner panel
+- winner say/whisper buttons
+- reward yell buttons
+- `GAME CONTROL`
+  - `START GAME`
+  - `STOP GAME`
+
+Session state display:
+
+```text
+EVENT STARTED - ROUND X - MEMBERS X
+EVENT STOPPED - ROUND X - MEMBERS X
+```
+
+`START GAME` and `STOP GAME` visually reflect session state:
+
+- Start disabled while active
+- Stop disabled while inactive
+
+### Roster
+
+Roster snapshot and setup tab.
+
+Contains:
+
+- recorded player number/name list
+- per-player send button
+- roster pagination
+- roster setup buttons:
+  - `Start`
+  - `Send #`
+  - `Stop`
+  - `Reset`
+  - `Rounds 0`
+- Roster-local status line
+
+Roster setup controls are locked while a game session is active, except `Rounds 0`.
+
+### Rewards
+
+Reward template management and secondary reward view.
+
+Contains:
+
+- reward yell buttons
+- add reward template
+- remove reward template
+- reward template pagination
+
+### Settings
+
+Contains:
+
+- number whisper text
+- round roll delay
+
+Both persist through SavedVariables.
+
+## Documentation Files
+
+- `AGENT.MD`: standing agent/project rules
+- `DEV.MD`: current development state summary
+- `docs/RaidNumbering.md`: raid numbering model
+- `docs/Rounds.md`: round/roll/reroll/winner model
+- `docs/Sessions.md`: active session and history persistence
+- `docs/UI.md`: UI layout and control bindings
+
+## Validation Commands
+
+From project root:
+
+```powershell
+& 'C:\Users\hamar\AppData\Roaming\JetBrains\Rider2026.1\plugins\wowlua-ls\server\win32-x64\wowlua_ls.exe' check .
+git diff --check
+```
+
+## Known Next Steps
+
+- Add a fifth `History` tab.
+- Display saved `MicroGamesDB.history` sessions.
+- Consider chat throttling for mass whisper sending.
+- Consider more robust localized roll-message parsing if non-English clients are targeted later.

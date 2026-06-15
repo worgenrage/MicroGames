@@ -67,6 +67,7 @@ local sentCount = addon.API.SendNumbers()
 ```
 
 `addon.API.SendNumbers()` sends one immediate whisper per recorded player. If chat throttling becomes a problem, this function should be changed to use a queued sender.
+The whisper text is stored in `MicroGamesDB.numberWhisperText`.
 
 Compatibility aliases are currently available:
 

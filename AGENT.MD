@@ -48,6 +48,7 @@
 - Number whispers must use the recorded snapshot from `StartRaidNumbering()`, not the current live raid roster.
 - `StartRaidNumbering()` must not send whispers automatically; sending numbers is a separate explicit UX action through `SendNumbers()`.
 - The default number whisper text is `Your MG number is: XX`; UI-provided text should be saved through the API and use `XX` as the number placeholder.
+- Number whisper text must persist through `MicroGamesDB.numberWhisperText`.
 - The current scope is game-master-only, so addon-message synchronization is not required yet.
 - Keep the detailed model in `docs/RaidNumbering.md` in sync with implementation changes.
 
@@ -56,19 +57,26 @@
 - Do not advance rounds during addon load.
 - `RoundRoll()` is the explicit UX action for the future `Round Roll` button.
 - Each `RoundRoll()` call increments the round counter by 1.
+- `RerollCurrentRound()` must roll again for the current round without incrementing the round counter.
+- Rerolls should be recorded under the same round in session data.
 - The UI should show both the current round and the previous completed round.
 - During `ROUND 1`, there is no previous completed round, so show `-`.
 - Announce rounds in raid chat as `ROUND X`.
 - After a short delay, roll from 1 to the recorded raid number count.
 - The roll range must use the `StartRaidNumbering()` snapshot count, not the current live raid size.
 - Use `RandomRoll(1, recordedCount)` for the actual roll; `BuildRollCommand()` is only a display preview.
-- Detect the pending roll result from `CHAT_MSG_SYSTEM` and resolve the winner against the recorded snapshot.
+- Detect the pending roll result from `CHAT_MSG_SYSTEM`, accept only the game master's own roll, and resolve the winner against the recorded snapshot.
 - The UI should prominently show the winner number and matching player name after a roll.
+- Winner display should be visually separated from normal status text with a highlighted panel/color.
 - Winner buttons should send `You win ROUND X come closer! :)` through say or whisper as separate explicit actions.
 - Reward templates should start with `10 GOLD!`, `20 GOLD!`, and `KROLL BLADE BOSS`.
 - Reward templates must be expandable from the UI.
 - Reward templates must persist through `MicroGamesDB.rewardTemplates`.
+- Round roll delay must persist through `MicroGamesDB.roundRollDelay`.
 - Reward yells must be explicit button actions and must not be automatic after a roll.
+- Reward yell text should start with the winner name in `[WinnerName]: reward` format.
+- Reward yell buttons should be available from the Control tab during gameplay.
+- `Round Roll` should be the visually dominant gameplay action, with setup/reset controls kept compact.
 - Keep the detailed model in `docs/Rounds.md` in sync with implementation changes.
 
 ## UI Model
@@ -79,3 +87,17 @@
 - Use tabs for separate concerns such as Control, Roster, and Settings.
 - Loading the addon may create UI and register slash commands, but must not count raid members, send whispers, or advance rounds.
 - Keep UI behavior documented in `docs/UI.md`.
+
+## Game Session Model
+
+- Active games must persist in `MicroGamesDB.activeSession`.
+- Completed games must be appended to `MicroGamesDB.history`.
+- `START GAME` starts or resumes the active session.
+- `START GAME` must not create a second session if one is already active; return/report `ACTIVE_SESSION_EXISTS`.
+- `STOP GAME` stops the active session and saves collected data for a future History tab.
+- UI buttons should visually reflect session state: START disabled while active, STOP disabled while inactive.
+- UI should show a clear state line such as `EVENT STARTED - ROUND X - MEMBERS X`.
+- Roster setup controls must use a Roster-local status line.
+- Roster setup controls must be locked while a game session is active, except `Rounds 0`.
+- Active session state must survive `/reload`, window close/open, and addon UI recreation.
+- Keep session persistence documented in `docs/Sessions.md`.

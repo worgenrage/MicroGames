@@ -10,19 +10,32 @@ local namesByNumber = {}
 local assignedCount = 0
 local assignmentActive = false
 local currentRound = 0
-local roundRollDelay = 2
 local pendingRollRound = nil
 local lastWinnerRound = nil
 local lastWinnerNumber = nil
 local lastWinnerName = nil
-local numberWhisperText = "Your MG number is: XX"
 local defaultRewardTemplates = {
     "10 GOLD!",
     "20 GOLD!",
     "KROLL BLADE BOSS"
 }
-local rewardTemplates = nil
 local eventFrame = CreateFrame("Frame")
+
+local function EnsureSettings()
+    if type(MicroGamesDB) ~= "table" then
+        MicroGamesDB = {}
+    end
+
+    if type(MicroGamesDB.numberWhisperText) ~= "string" or MicroGamesDB.numberWhisperText == "" then
+        MicroGamesDB.numberWhisperText = "Your MG number is: XX"
+    end
+
+    if type(MicroGamesDB.roundRollDelay) ~= "number" or MicroGamesDB.roundRollDelay < 0 then
+        MicroGamesDB.roundRollDelay = 2
+    end
+
+    return MicroGamesDB
+end
 
 local function CopyDefaultRewardTemplates()
     local templates = {}
@@ -35,25 +48,186 @@ local function CopyDefaultRewardTemplates()
 end
 
 local function EnsureRewardTemplates()
-    if type(MicroGamesDB) ~= "table" then
-        MicroGamesDB = {}
+    local settings = EnsureSettings()
+
+    if type(settings.rewardTemplates) ~= "table" or #settings.rewardTemplates == 0 then
+        settings.rewardTemplates = CopyDefaultRewardTemplates()
     end
 
-    if type(MicroGamesDB.rewardTemplates) ~= "table" or #MicroGamesDB.rewardTemplates == 0 then
-        MicroGamesDB.rewardTemplates = CopyDefaultRewardTemplates()
+    return settings.rewardTemplates
+end
+
+local function EnsureHistory()
+    local settings = EnsureSettings()
+
+    if type(settings.history) ~= "table" then
+        settings.history = {}
     end
 
-    rewardTemplates = MicroGamesDB.rewardTemplates
+    return settings.history
+end
 
-    return rewardTemplates
+local function GetTimestamp()
+    return date("%Y-%m-%d %H:%M:%S")
+end
+
+local function GetRosterSnapshot()
+    local roster = {}
+
+    for number = 1, assignedCount do
+        local name = namesByNumber[number]
+
+        if name then
+            roster[#roster + 1] = {
+                number = number,
+                name = name
+            }
+        end
+    end
+
+    return roster
+end
+
+local function RestoreRosterSnapshot(roster)
+    numbersByName = {}
+    namesByNumber = {}
+    assignedCount = 0
+
+    if type(roster) ~= "table" then
+        return
+    end
+
+    for index = 1, #roster do
+        local entry = roster[index]
+
+        if entry and entry.name and entry.number then
+            namesByNumber[entry.number] = entry.name
+            numbersByName[entry.name] = entry.number
+
+            if entry.number > assignedCount then
+                assignedCount = entry.number
+            end
+        end
+    end
+end
+
+local function PersistActiveSessionState()
+    local session = EnsureSettings().activeSession
+
+    if type(session) ~= "table" then
+        return nil
+    end
+
+    session.roster = GetRosterSnapshot()
+    session.assignedCount = assignedCount
+    session.currentRound = currentRound
+    session.lastWinnerRound = lastWinnerRound
+    session.lastWinnerNumber = lastWinnerNumber
+    session.lastWinnerName = lastWinnerName
+    session.pendingRollRound = pendingRollRound
+
+    return session
+end
+
+local function RestoreActiveSessionState()
+    local session = EnsureSettings().activeSession
+
+    if type(session) ~= "table" or session.status ~= "active" then
+        return false
+    end
+
+    RestoreRosterSnapshot(session.roster)
+    assignmentActive = assignedCount > 0
+    currentRound = session.currentRound or 0
+    pendingRollRound = session.pendingRollRound
+    lastWinnerRound = session.lastWinnerRound
+    lastWinnerNumber = session.lastWinnerNumber
+    lastWinnerName = session.lastWinnerName
+
+    return true
+end
+
+local function RecordSessionRound(roundNumber)
+    local session = EnsureSettings().activeSession
+
+    if type(session) ~= "table" then
+        return
+    end
+
+    if type(session.rounds) ~= "table" then
+        session.rounds = {}
+    end
+
+    session.rounds[#session.rounds + 1] = {
+        round = roundNumber,
+        announcedAt = GetTimestamp(),
+        rollMin = 1,
+        rollMax = assignedCount
+    }
+end
+
+local function RecordSessionRollResult(roundNumber, rollNumber, winnerName)
+    local session = EnsureSettings().activeSession
+    local rounds
+    local roundEntry
+
+    if type(session) ~= "table" or type(session.rounds) ~= "table" then
+        return
+    end
+
+    rounds = session.rounds
+
+    for index = #rounds, 1, -1 do
+        if rounds[index].round == roundNumber then
+            roundEntry = rounds[index]
+            roundEntry.rollNumber = rollNumber
+            roundEntry.winnerName = winnerName
+            roundEntry.rolledAt = GetTimestamp()
+
+            if type(roundEntry.rolls) ~= "table" then
+                roundEntry.rolls = {}
+            end
+
+            roundEntry.rolls[#roundEntry.rolls + 1] = {
+                rollNumber = rollNumber,
+                winnerName = winnerName,
+                rolledAt = roundEntry.rolledAt,
+                reroll = #roundEntry.rolls > 0
+            }
+
+            return
+        end
+    end
+end
+
+local function RecordSessionReward(rewardText, message)
+    local session = EnsureSettings().activeSession
+
+    if type(session) ~= "table" then
+        return
+    end
+
+    if type(session.rewards) ~= "table" then
+        session.rewards = {}
+    end
+
+    session.rewards[#session.rewards + 1] = {
+        round = lastWinnerRound,
+        winnerNumber = lastWinnerNumber,
+        winnerName = lastWinnerName,
+        reward = rewardText,
+        message = message,
+        sentAt = GetTimestamp()
+    }
 end
 
 local function BuildNumberMessage(number)
     local numberText = tostring(number)
-    local message, replacements = string.gsub(numberWhisperText, "XX", numberText)
+    local text = API.GetNumberWhisperText()
+    local message, replacements = string.gsub(text, "XX", numberText)
 
     if replacements == 0 then
-        message = numberWhisperText .. " " .. numberText
+        message = text .. " " .. numberText
     end
 
     return message
@@ -76,13 +250,13 @@ local function SendYellMessage(message)
 end
 
 local function ParseRollMessage(message)
-    local roll, minimum, maximum = string.match(message, "rolls (%d+) %((%d+)%-(%d+)%)")
+    local roller, roll, minimum, maximum = string.match(message, "^(.-) rolls (%d+) %((%d+)%-(%d+)%)")
 
     if not roll then
         return nil
     end
 
-    return tonumber(roll), tonumber(minimum), tonumber(maximum)
+    return roller, tonumber(roll), tonumber(minimum), tonumber(maximum)
 end
 
 local function SetLastWinner(roundNumber, number)
@@ -92,20 +266,29 @@ local function SetLastWinner(roundNumber, number)
 end
 
 local function HandleSystemMessage(message)
-    local roll, minimum, maximum
+    local roller, roll, minimum, maximum
+    local playerName
 
     if not pendingRollRound then
         return
     end
 
-    roll, minimum, maximum = ParseRollMessage(message)
+    roller, roll, minimum, maximum = ParseRollMessage(message)
 
     if not roll or minimum ~= 1 or maximum ~= assignedCount then
         return
     end
 
+    playerName = UnitName("player")
+
+    if roller ~= playerName then
+        return
+    end
+
     SetLastWinner(pendingRollRound, roll)
+    RecordSessionRollResult(pendingRollRound, roll, lastWinnerName)
     pendingRollRound = nil
+    PersistActiveSessionState()
 
     if addon.UI and addon.UI.Refresh then
         addon.UI.Refresh()
@@ -139,6 +322,7 @@ function API.StartRaidNumbering()
     end
 
     assignmentActive = true
+    PersistActiveSessionState()
 
     return assignedCount
 end
@@ -157,6 +341,7 @@ function API.ResetRaidNumbering()
     lastWinnerRound = nil
     lastWinnerNumber = nil
     lastWinnerName = nil
+    PersistActiveSessionState()
 end
 
 function API.HasRaidNumbers()
@@ -201,18 +386,20 @@ function API.GetRaidNumberEntries()
 end
 
 function API.SetNumberWhisperText(text)
+    local settings = EnsureSettings()
+
     if type(text) ~= "string" or text == "" then
-        numberWhisperText = "Your MG number is: XX"
-        return numberWhisperText
+        settings.numberWhisperText = "Your MG number is: XX"
+        return settings.numberWhisperText
     end
 
-    numberWhisperText = text
+    settings.numberWhisperText = text
 
-    return numberWhisperText
+    return settings.numberWhisperText
 end
 
 function API.GetNumberWhisperText()
-    return numberWhisperText
+    return EnsureSettings().numberWhisperText
 end
 
 function API.BuildNumberWhisperMessage(number)
@@ -268,21 +455,24 @@ function API.ResetRounds()
     lastWinnerRound = nil
     lastWinnerNumber = nil
     lastWinnerName = nil
+    PersistActiveSessionState()
 end
 
 function API.SetRoundRollDelay(seconds)
+    local settings = EnsureSettings()
+
     if type(seconds) ~= "number" or seconds < 0 then
-        roundRollDelay = 2
-        return roundRollDelay
+        settings.roundRollDelay = 2
+        return settings.roundRollDelay
     end
 
-    roundRollDelay = seconds
+    settings.roundRollDelay = seconds
 
-    return roundRollDelay
+    return settings.roundRollDelay
 end
 
 function API.GetRoundRollDelay()
-    return roundRollDelay
+    return EnsureSettings().roundRollDelay
 end
 
 function API.BuildRoundMessage(roundNumber)
@@ -303,6 +493,14 @@ function API.BuildRollCommand()
     end
 
     return "/roll 1-" .. tostring(assignedCount)
+end
+
+function API.BuildRerollButtonText()
+    if currentRound <= 0 then
+        return "Roll again"
+    end
+
+    return "Roll again for " .. tostring(API.BuildRoundMessage(currentRound))
 end
 
 function API.GetLastWinner()
@@ -398,11 +596,11 @@ function API.BuildRewardYellMessage(rewardText)
     end
 
     if lastWinnerName and lastWinnerRound then
-        return tostring(lastWinnerName) .. " wins ROUND " .. tostring(lastWinnerRound) .. " reward: " .. rewardText
+        return "[" .. tostring(lastWinnerName) .. "]: " .. rewardText
     end
 
-    if lastWinnerRound then
-        return "ROUND " .. tostring(lastWinnerRound) .. " reward: " .. rewardText
+    if lastWinnerName then
+        return "[" .. tostring(lastWinnerName) .. "]: " .. rewardText
     end
 
     return "Reward: " .. rewardText
@@ -424,28 +622,165 @@ function API.SendRewardYell(index)
     end
 
     SendYellMessage(message)
+    RecordSessionReward(rewardText, message)
+    PersistActiveSessionState()
 
     return true
 end
 
+function API.StartGameSession()
+    local settings = EnsureSettings()
+    local session
+
+    if type(settings.activeSession) == "table" and settings.activeSession.status == "active" then
+        RestoreActiveSessionState()
+        return false, "ACTIVE_SESSION_EXISTS"
+    end
+
+    if assignedCount <= 0 then
+        API.StartRaidNumbering()
+    end
+
+    session = {
+        status = "active",
+        startedAt = GetTimestamp(),
+        assignedCount = assignedCount,
+        roster = GetRosterSnapshot(),
+        currentRound = currentRound,
+        rounds = {},
+        rewards = {}
+    }
+
+    settings.activeSession = session
+    PersistActiveSessionState()
+
+    return true, "GAME_STARTED"
+end
+
+function API.StopGameSession()
+    local settings = EnsureSettings()
+    local session = settings.activeSession
+    local history
+
+    if type(session) ~= "table" or session.status ~= "active" then
+        return false, "NO_ACTIVE_SESSION"
+    end
+
+    PersistActiveSessionState()
+
+    session.status = "stopped"
+    session.stoppedAt = GetTimestamp()
+    session.totalRounds = currentRound
+    session.finalAssignedCount = assignedCount
+    session.finalWinnerRound = lastWinnerRound
+    session.finalWinnerNumber = lastWinnerNumber
+    session.finalWinnerName = lastWinnerName
+
+    history = EnsureHistory()
+    history[#history + 1] = session
+    settings.activeSession = nil
+
+    return true, "GAME_STOPPED"
+end
+
+function API.HasActiveGameSession()
+    local session = EnsureSettings().activeSession
+
+    return type(session) == "table" and session.status == "active"
+end
+
+function API.CanModifyRoster()
+    return not API.HasActiveGameSession()
+end
+
+function API.GetGameSessionSummary()
+    local session = EnsureSettings().activeSession
+
+    if type(session) ~= "table" or session.status ~= "active" then
+        return {
+            active = false
+        }
+    end
+
+    return {
+        active = true,
+        startedAt = session.startedAt,
+        assignedCount = session.assignedCount or assignedCount,
+        currentRound = session.currentRound or currentRound
+    }
+end
+
+function API.GetGameHistory()
+    local history = EnsureHistory()
+    local copy = {}
+
+    for index = 1, #history do
+        copy[index] = history[index]
+    end
+
+    return copy
+end
+
 function API.RoundRoll()
+    local delay = API.GetRoundRollDelay()
+
     if assignedCount <= 0 then
         return false, "NO_RAID_NUMBERS"
     end
 
     currentRound = currentRound + 1
     pendingRollRound = currentRound
+    RecordSessionRound(currentRound)
+    PersistActiveSessionState()
 
     SendRaidMessage(API.BuildRoundMessage(currentRound))
 
-    C_Timer.After(roundRollDelay, function()
+    C_Timer.After(delay, function()
         RandomRoll(1, assignedCount)
     end)
 
+    C_Timer.After(delay + 10, function()
+        if pendingRollRound == currentRound then
+            pendingRollRound = nil
+            PersistActiveSessionState()
+        end
+    end)
+
     return true, currentRound
+end
+
+function API.RerollCurrentRound()
+    local delay = API.GetRoundRollDelay()
+    local rerollRound = currentRound
+
+    if assignedCount <= 0 then
+        return false, "NO_RAID_NUMBERS"
+    end
+
+    if rerollRound <= 0 then
+        return false, "NO_CURRENT_ROUND"
+    end
+
+    pendingRollRound = rerollRound
+    PersistActiveSessionState()
+
+    C_Timer.After(delay, function()
+        RandomRoll(1, assignedCount)
+    end)
+
+    C_Timer.After(delay + 10, function()
+        if pendingRollRound == rerollRound then
+            pendingRollRound = nil
+            PersistActiveSessionState()
+        end
+    end)
+
+    return true, rerollRound
 end
 
 API.AssignRaidNumbers = API.StartRaidNumbering
 API.ClearRaidNumbers = API.ResetRaidNumbering
 API.GetAssignedRaidCount = API.CountRaidNumbers
 API.SendNumberWhispers = API.SendNumbers
+
+RestoreActiveSessionState()
