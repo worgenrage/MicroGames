@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Bumped addon metadata version to `0.1.1`.
+- Added stone-silver section separators across the MicroGames UI tabs.
 - Added a `History` tab for completed game sessions.
 - Added session selection, session details, and paginated per-round history.
 - History now shows round number, roll time, winner number/name, reward text, and reward send time.

@@ -518,6 +518,14 @@ local function CreateValue(parent, x, y, width)
     return value
 end
 
+local function CreateSeparator(parent, y, width)
+    local line = parent:CreateTexture(nil, "ARTWORK")
+    line:SetPoint("TOPLEFT", parent, "TOPLEFT", 0, y)
+    line:SetSize(width or 410, 2)
+    line:SetColorTexture(0.74, 0.74, 0.70, 0.72)
+    return line
+end
+
 local function CreateButton(parent, text, x, y, width, height, onClick)
     local button = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
     button:SetPoint("TOPLEFT", parent, "TOPLEFT", x, y)
@@ -547,6 +555,8 @@ local function CreateControlPage(parent)
     countText = CreateValue(page, 0, -44, 160)
     activeText = CreateValue(page, 180, -44, 180)
 
+    CreateSeparator(page, -66)
+
     roundRollButton = CreateButton(page, "Round Roll", 0, -78, 410, 42, function()
         local ok, result = API.RoundRoll()
 
@@ -570,6 +580,8 @@ local function CreateControlPage(parent)
 
         RefreshAll()
     end)
+
+    CreateSeparator(page, -146)
 
     winnerPanel = CreateFrame("Frame", nil, page)
     winnerPanel:SetPoint("TOPLEFT", page, "TOPLEFT", 0, -154)
@@ -607,6 +619,8 @@ local function CreateControlPage(parent)
         end
     end)
 
+    CreateSeparator(page, -288)
+
     CreateLabel(page, "Reward yells", 0, -298)
 
     for i = 1, REWARD_BUTTONS_PER_PAGE do
@@ -637,6 +651,8 @@ local function CreateControlPage(parent)
         rewardButtonPage = rewardButtonPage + 1
         RefreshRewardButtons()
     end)
+
+    CreateSeparator(page, -438)
 
     CreateLabel(page, "GAME CONTROL", 0, -446)
     gameSessionText = CreateValue(page, 130, -446, 280)
@@ -678,6 +694,8 @@ local function CreateRosterPage(parent)
 
     CreateLabel(page, "#", 0, 0)
     CreateLabel(page, "Name", 54, 0)
+
+    CreateSeparator(page, -18)
 
     for i = 1, ROWS_PER_PAGE do
         local row = CreateFrame("Frame", nil, page)
@@ -721,6 +739,8 @@ local function CreateRosterPage(parent)
     end)
 
     rosterPageText = CreateValue(page, 132, -338, 150)
+
+    CreateSeparator(page, -372)
 
     CreateLabel(page, "Roster setup", 0, -382)
 
@@ -790,6 +810,8 @@ local function CreateRewardsPage(parent)
     CreateLabel(page, "Winner reward yells", 0, 0)
     CreateValue(page, 0, -24, 410):SetText("Press a reward button after a winner is detected.")
 
+    CreateSeparator(page, -44)
+
     for i = 1, REWARD_BUTTONS_PER_PAGE do
         local column = (i - 1) % 2
         local row = math.floor((i - 1) / 2)
@@ -819,6 +841,8 @@ local function CreateRewardsPage(parent)
         RefreshRewardButtons()
     end)
 
+    CreateSeparator(page, -198)
+
     CreateLabel(page, "Add reward template", 0, -210)
     rewardEditBox = CreateEditBox(page, 0, -238, 292, 24)
 
@@ -833,6 +857,8 @@ local function CreateRewardsPage(parent)
     end)
 
     CreateLabel(page, "Saved reward templates", 0, -282)
+
+    CreateSeparator(page, -300)
 
     for i = 1, REWARD_ROWS_PER_PAGE do
         local row = CreateFrame("Frame", nil, page)
@@ -884,6 +910,8 @@ local function CreateHistoryPage(parent)
 
     CreateLabel(page, "Completed sessions", 0, 0)
 
+    CreateSeparator(page, -18)
+
     for i = 1, HISTORY_ROWS_PER_PAGE do
         local row = CreateFrame("Frame", nil, page)
         row:SetPoint("TOPLEFT", page, "TOPLEFT", 0, -28 - ((i - 1) * 28))
@@ -920,6 +948,8 @@ local function CreateHistoryPage(parent)
         RefreshHistory()
     end)
 
+    CreateSeparator(page, -210)
+
     CreateLabel(page, "Session details", 0, -220)
 
     historyDetailText = page:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
@@ -927,6 +957,8 @@ local function CreateHistoryPage(parent)
     historyDetailText:SetWidth(410)
     historyDetailText:SetJustifyH("LEFT")
     historyDetailText:SetJustifyV("TOP")
+
+    CreateSeparator(page, -334)
 
     CreateLabel(page, "Round rewards", 0, -344)
 
@@ -982,6 +1014,8 @@ local function CreateSettingsPage(parent)
 
     whisperPreviewText = CreateValue(page, 0, -98, 410)
 
+    CreateSeparator(page, -128)
+
     CreateLabel(page, "Round roll delay seconds", 0, -138)
     delayEditBox = CreateEditBox(page, 0, -166, 80, 24)
     delayEditBox:SetNumeric(false)
@@ -998,6 +1032,8 @@ local function CreateSettingsPage(parent)
         SetStatus("Round delay saved.")
         RefreshAll()
     end)
+
+    CreateSeparator(page, -220)
 
     CreateLabel(page, "Danger zone", 0, -230)
 
