@@ -34,6 +34,7 @@ The saved session includes:
 - final winner fields when available
 
 Rerolls are saved as additional roll entries inside the same round.
+Rewards are saved only after an explicit reward button action calls `addon.API.SendRewardYell(index)`; rounds without a selected reward should display an empty reward value in History.
 
 ## History
 

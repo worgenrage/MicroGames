@@ -308,6 +308,10 @@ local function BuildHistoryRowText(session, index)
     return "#" .. tostring(index) .. "  " .. tostring(startedAt) .. " - rounds " .. tostring(rounds) .. " - players " .. tostring(players) .. " - stopped " .. tostring(stoppedAt)
 end
 
+local function HistoryColor(text, color)
+    return "|cff" .. color .. tostring(text) .. "|r"
+end
+
 local function CompactTime(timestamp)
     local timeText
 
@@ -347,7 +351,7 @@ local function BuildRewardsByRound(session)
         local roundNumber = reward.round or 0
         local rewardText = tostring(reward.reward or "-")
         local sentAt = CompactTime(reward.sentAt)
-        local line = rewardText .. " @" .. sentAt
+        local line = HistoryColor(rewardText, "9cff9c") .. " at " .. sentAt
 
         if type(rewardsByRound[roundNumber]) ~= "table" then
             rewardsByRound[roundNumber] = {}
@@ -365,13 +369,17 @@ local function BuildRoundHistoryText(round, rewardsByRound)
     local rolledAt = CompactTime(round.rolledAt or round.announcedAt)
     local roundNumber = round.round or "?"
     local rewards = rewardsByRound[round.round or 0]
-    local rewardText = "-"
+    local rewardText = "Reward: -"
 
     if type(rewards) == "table" and #rewards > 0 then
-        rewardText = table.concat(rewards, "; ")
+        rewardText = "Reward: " .. table.concat(rewards, "; ")
     end
 
-    return "R" .. tostring(roundNumber) .. " | " .. tostring(rolledAt) .. " | #" .. tostring(rollNumber) .. " " .. tostring(winnerName) .. " | " .. rewardText
+    return "R" .. tostring(roundNumber)
+        .. " | " .. tostring(rolledAt)
+        .. " | #" .. tostring(rollNumber)
+        .. " " .. HistoryColor(winnerName, "80ff80")
+        .. " | " .. rewardText
 end
 
 local function RefreshHistoryRounds(session)
@@ -975,7 +983,7 @@ local function CreateHistoryPage(parent)
 
     CreateSeparator(page, -334)
 
-    CreateLabel(page, "Round rewards", 0, -344)
+    CreateLabel(page, "Round results and rewards", 0, -344)
 
     for i = 1, HISTORY_ROUND_ROWS_PER_PAGE do
         local row = CreateFrame("Frame", nil, page)

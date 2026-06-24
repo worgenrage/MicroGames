@@ -24,6 +24,7 @@ Rounds do not advance while the addon is loading.
 - The winner message is `You win ROUND X come closer! :)`.
 - Reward yell templates can be selected manually after a winner is detected.
 - Reward yells are never automatic.
+- Reward history entries are only recorded when `addon.API.SendRewardYell(index)` is called by an explicit reward button action.
 - Reward templates are persisted in `MicroGamesDB.rewardTemplates`.
 - Round roll delay is persisted in `MicroGamesDB.roundRollDelay`.
 - Resetting raid numbering also resets the round counter.
