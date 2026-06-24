@@ -28,11 +28,24 @@
 
 - Local executable:
   `C:\Users\hamar\AppData\Roaming\JetBrains\Rider2026.1\plugins\wowlua-ls\server\win32-x64\wowlua_ls.exe`
+- If JetBrains updates move the plugin, search for `wowlua_ls.exe` under:
+  `C:\Users\hamar\AppData\Roaming\JetBrains\`
+- In Codex managed sandbox mode, AppData paths may be present but not readable/executable without an escalated shell command.
 - Diagnostic command from project root:
   `& 'C:\Users\hamar\AppData\Roaming\JetBrains\Rider2026.1\plugins\wowlua-ls\server\win32-x64\wowlua_ls.exe' check .`
 - Use the direct `check .` subcommand, not LSP stdio mode.
 - After code changes, also run:
   `git diff --check`
+
+## Local Tooling
+
+- `rg.exe` is installed, but the current Codex PowerShell sandbox may not resolve it because the executable lives under AppData.
+- Current Winget ripgrep executable:
+  `C:\Users\hamar\AppData\Local\Microsoft\WinGet\Packages\BurntSushi.ripgrep.MSVC_Microsoft.Winget.Source_8wekyb3d8bbwe\ripgrep-15.1.0-x86_64-pc-windows-msvc\rg.exe`
+- Current Codex-bundled ripgrep executable:
+  `C:\Users\hamar\AppData\Local\JetBrains\Rider2026.1\acp-agents\.runtimes\node\24.13.0\npm-cache\_npx\6722ddab116cb282\node_modules\@openai\codex-win32-x64\vendor\x86_64-pc-windows-msvc\codex-path\rg.exe`
+- If plain `rg` fails with "not recognized", first check sandbox access/PATH with `where.exe rg` and then use the full executable path with an escalated shell command when needed.
+- For Markdown discovery, use a case-inclusive glob such as `-g '*.[mM][dD]'` because project files include uppercase `.MD`.
 
 ## Raid Numbering Model
 
