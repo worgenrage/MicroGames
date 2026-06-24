@@ -126,10 +126,14 @@ local function UpdateSummary()
     SetButtonEnabled(startGameButton, not session.active)
     SetButtonEnabled(stopGameButton, session.active)
     SetButtonEnabled(rosterStartButton, canModifyRoster)
-    SetButtonEnabled(rosterSendButton, canModifyRoster)
+    SetButtonEnabled(rosterSendButton, canModifyRoster and count > 0)
     SetButtonEnabled(rosterStopButton, canModifyRoster)
     SetButtonEnabled(rosterResetButton, canModifyRoster)
     SetButtonEnabled(roundRollButton, count > 0 and not API.HasPendingRoll())
+
+    if rosterSendButton then
+        rosterSendButton:SetText("Whisper MG Numbers (" .. tostring(count) .. ")")
+    end
 
     if roundText then
         if round > 0 then
@@ -752,22 +756,17 @@ local function CreateRosterPage(parent)
 
         local count = API.StartRaidNumbering()
         rosterPage = 1
-        SetRosterStatus("Numbering started. Recorded " .. tostring(count) .. " players.")
-        RefreshAll()
-    end)
 
-    rosterSendButton = CreateButton(page, "Send #", 84, -406, 76, 22, function()
-        if not API.CanModifyRoster() then
-            SetRosterStatus("Roster is locked while a game session is active.")
-            return
+        if count > 0 then
+            SetRosterStatus("Numbering started. Recorded " .. tostring(count) .. " players.")
+        else
+            SetRosterStatus("No raid members recorded. Join a raid first.")
         end
 
-        local sentCount = API.SendNumbers()
-        SetRosterStatus("Sent number whispers: " .. tostring(sentCount))
         RefreshAll()
     end)
 
-    rosterStopButton = CreateButton(page, "Stop", 168, -406, 64, 22, function()
+    rosterStopButton = CreateButton(page, "Stop", 84, -406, 64, 22, function()
         if not API.CanModifyRoster() then
             SetRosterStatus("Roster is locked while a game session is active.")
             return
@@ -778,7 +777,7 @@ local function CreateRosterPage(parent)
         RefreshAll()
     end)
 
-    rosterResetButton = CreateButton(page, "Reset", 240, -406, 70, 22, function()
+    rosterResetButton = CreateButton(page, "Reset", 156, -406, 70, 22, function()
         if not API.CanModifyRoster() then
             SetRosterStatus("Roster is locked while a game session is active.")
             return
@@ -790,13 +789,29 @@ local function CreateRosterPage(parent)
         RefreshAll()
     end)
 
-    CreateButton(page, "Rounds 0", 318, -406, 92, 22, function()
+    CreateButton(page, "Rounds 0", 234, -406, 92, 22, function()
         API.ResetRounds()
         SetRosterStatus("Rounds reset.")
         RefreshAll()
     end)
 
-    rosterStatusText = CreateValue(page, 0, -448, 410)
+    rosterSendButton = CreateButton(page, "Whisper MG Numbers (0)", 0, -434, 242, 24, function()
+        if not API.CanModifyRoster() then
+            SetRosterStatus("Roster is locked while a game session is active.")
+            return
+        end
+
+        if API.CountRaidNumbers() <= 0 then
+            SetRosterStatus("No recorded MG numbers to whisper.")
+            return
+        end
+
+        local sentCount = API.SendNumbers()
+        SetRosterStatus("Sent MG number whispers: " .. tostring(sentCount))
+        RefreshAll()
+    end)
+
+    rosterStatusText = CreateValue(page, 0, -470, 410)
     rosterStatusText:SetText("Roster ready.")
 
     return page

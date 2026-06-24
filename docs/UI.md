@@ -40,7 +40,7 @@ Closing the window only hides it. It must not reset numbering, rounds, whisper t
 ## Control Bindings
 
 - `START GAME` calls `addon.API.StartGameSession()`.
-- `STOP GAME` calls `addon.API.StopGameSession()` and stores the completed session in history.
+- `STOP GAME` calls `addon.API.StopGameSession()`, stores the completed session in history, and clears runtime roster/round/winner state for the next game.
 - If an active session exists, `StartGameSession()` returns `ACTIVE_SESSION_EXISTS` and must not start a second session.
 - `Start Numbering` calls `addon.API.StartRaidNumbering()` and records the current raid snapshot.
 - `Send Numbers` calls `addon.API.SendNumbers()` and whispers numbers to recorded players.

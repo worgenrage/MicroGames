@@ -2,8 +2,10 @@
 
 ## Unreleased
 
-- Bumped addon metadata version to `0.1.1`.
+- Bumped addon metadata version to `0.1.2`.
 - Added stone-silver section separators across the MicroGames UI tabs.
+- Renamed and moved the roster bulk number whisper button for clearer setup flow.
+- `STOP GAME` now clears the runtime raid snapshot after saving the completed session to history.
 - Added a `History` tab for completed game sessions.
 - Added session selection, session details, and paginated per-round history.
 - History now shows round number, roll time, winner number/name, reward text, and reward send time.

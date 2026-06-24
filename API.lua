@@ -705,6 +705,15 @@ function API.StopGameSession()
     history = EnsureHistory()
     history[#history + 1] = session
     settings.activeSession = nil
+    numbersByName = {}
+    namesByNumber = {}
+    assignedCount = 0
+    assignmentActive = false
+    currentRound = 0
+    pendingRollRound = nil
+    lastWinnerRound = nil
+    lastWinnerNumber = nil
+    lastWinnerName = nil
 
     return true, "GAME_STOPPED"
 end

@@ -107,7 +107,7 @@
 - Completed games must be appended to `MicroGamesDB.history`.
 - `START GAME` starts or resumes the active session.
 - `START GAME` must not create a second session if one is already active; return/report `ACTIVE_SESSION_EXISTS`.
-- `STOP GAME` stops the active session and saves collected data for a future History tab.
+- `STOP GAME` stops the active session, saves collected data to history, and clears runtime roster/round/winner state so the next game starts from a fresh raid snapshot.
 - UI buttons should visually reflect session state: START disabled while active, STOP disabled while inactive.
 - UI should show a clear state line such as `EVENT STARTED - ROUND X - MEMBERS X`.
 - Roster setup controls must use a Roster-local status line.

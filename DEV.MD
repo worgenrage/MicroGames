@@ -92,6 +92,7 @@ Rules:
 - `START GAME` starts a new active session.
 - If there is already an active session, `StartGameSession()` returns `ACTIVE_SESSION_EXISTS`.
 - `STOP GAME` stops the active session and appends it to `MicroGamesDB.history`.
+- After `STOP GAME` saves the completed session, runtime roster, round, pending roll, and winner state are cleared so the next game uses a fresh raid snapshot.
 - Active sessions are stored in `MicroGamesDB.activeSession`.
 - Completed sessions are stored in `MicroGamesDB.history`.
 - While a game session is active or a roll is pending, roster setup controls are locked except `Rounds 0`.

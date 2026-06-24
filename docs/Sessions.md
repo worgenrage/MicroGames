@@ -20,6 +20,7 @@ MicroGames keeps the active game session in SavedVariables so reloads and window
 ## Stop Game
 
 `addon.API.StopGameSession()` stops the active session and appends it to `MicroGamesDB.history`.
+After the completed session is saved, the runtime roster snapshot, round state, pending roll state, and last winner state are cleared so the next `START GAME` records a fresh raid snapshot.
 
 The saved session includes:
 
