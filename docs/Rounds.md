@@ -7,9 +7,12 @@ Rounds do not advance while the addon is loading.
 
 - The first round starts from 1.
 - `addon.API.RoundRoll()` is the handler for the `Round Roll` UX button.
+- `addon.API.RoundRoll()` and `addon.API.RerollCurrentRound()` require an active game session.
 - Each `RoundRoll` call increments the current round by 1.
 - `addon.API.RerollCurrentRound()` rolls again for the current round without incrementing the round counter.
 - A new roll or reroll cannot start while a previous delayed roll is pending.
+- Round reset cannot run while a delayed roll is pending.
+- Pending roll state is not restored after `/reload` because scheduled roll timers do not survive reload.
 - The UI should show the current round and the previous completed round.
 - During `ROUND 1`, there is no previous completed round to show.
 - The addon announces the round in raid chat as `ROUND X`.

@@ -8,6 +8,8 @@ local UI = addon.UI
 
 local FRAME_WIDTH = 460
 local FRAME_HEIGHT = 640
+local COLLAPSED_FRAME_WIDTH = 220
+local COLLAPSED_FRAME_HEIGHT = 72
 local ROWS_PER_PAGE = 12
 local REWARD_BUTTONS_PER_PAGE = 6
 local REWARD_ROWS_PER_PAGE = 6
@@ -15,6 +17,8 @@ local HISTORY_ROWS_PER_PAGE = 5
 local HISTORY_ROUND_ROWS_PER_PAGE = 6
 
 local frame
+local collapseButton
+local tradeEventFrame
 local tabs = {}
 local pages = {}
 local rosterRows = {}
@@ -29,6 +33,9 @@ local rewardSettingsPage = 1
 local historyPage = 1
 local historyRoundPage = 1
 local selectedHistoryIndex = nil
+local currentPageName = "control"
+local collapsed = false
+local collapsedForTrade = false
 local statusText
 local rosterStatusText
 local activeText
@@ -62,6 +69,7 @@ local rosterStartButton
 local rosterSendButton
 local rosterStopButton
 local rosterResetButton
+local resetRoundsButton
 local rerollButton
 
 local function SetButtonEnabled(button, enabled)
@@ -124,12 +132,13 @@ local function UpdateSummary()
     end
 
     SetButtonEnabled(startGameButton, not session.active)
-    SetButtonEnabled(stopGameButton, session.active)
+    SetButtonEnabled(stopGameButton, session.active and not API.HasPendingRoll())
     SetButtonEnabled(rosterStartButton, canModifyRoster)
-    SetButtonEnabled(rosterSendButton, canModifyRoster and count > 0)
+    SetButtonEnabled(rosterSendButton, canModifyRoster and API.HasRaidNumbers() and count > 0)
     SetButtonEnabled(rosterStopButton, canModifyRoster)
     SetButtonEnabled(rosterResetButton, canModifyRoster)
-    SetButtonEnabled(roundRollButton, count > 0 and not API.HasPendingRoll())
+    SetButtonEnabled(resetRoundsButton, not API.HasPendingRoll())
+    SetButtonEnabled(roundRollButton, session.active and count > 0 and not API.HasPendingRoll())
 
     if rosterSendButton then
         rosterSendButton:SetText("Whisper MG Numbers (" .. tostring(count) .. ")")
@@ -157,7 +166,7 @@ local function UpdateSummary()
 
     if rerollButton then
         rerollButton:SetText(API.BuildRerollButtonText())
-        SetButtonEnabled(rerollButton, round > 0 and count > 0 and not API.HasPendingRoll())
+        SetButtonEnabled(rerollButton, session.active and round > 0 and count > 0 and not API.HasPendingRoll())
     end
 
     if winnerText then
@@ -488,11 +497,84 @@ local function RefreshAll()
     end
 end
 
+local function SetCollapsed(value)
+    local tab
+
+    if not frame then
+        return
+    end
+
+    collapsed = value and true or false
+
+    if collapsed then
+        frame:SetSize(COLLAPSED_FRAME_WIDTH, COLLAPSED_FRAME_HEIGHT)
+
+        for _, page in pairs(pages) do
+            page:Hide()
+        end
+
+        for index = 1, #tabs do
+            tabs[index]:Hide()
+        end
+
+        if frame.title then
+            frame.title:SetText("MicroGames")
+        end
+
+        if collapseButton then
+            collapseButton:SetText("Open")
+        end
+
+        return
+    end
+
+    frame:SetSize(FRAME_WIDTH, FRAME_HEIGHT)
+
+    for index = 1, #tabs do
+        tabs[index]:Show()
+    end
+
+    for name, page in pairs(pages) do
+        if name == currentPageName then
+            page:Show()
+        else
+            page:Hide()
+        end
+    end
+
+    for index = 1, #tabs do
+        tab = tabs[index]
+
+        if tab.pageName == currentPageName then
+            PanelTemplates_SelectTab(tab)
+            PanelTemplates_SetTab(frame, index)
+        else
+            PanelTemplates_DeselectTab(tab)
+        end
+    end
+
+    if frame.title then
+        frame.title:SetText("MicroGames")
+    end
+
+    if collapseButton then
+        collapseButton:SetText("Mini")
+    end
+
+    RefreshAll()
+end
+
 local function ShowPage(pageName)
     local index
 
+    currentPageName = pageName or currentPageName
+
+    if collapsed then
+        return
+    end
+
     for name, page in pairs(pages) do
-        if name == pageName then
+        if name == currentPageName then
             page:Show()
         else
             page:Hide()
@@ -500,7 +582,7 @@ local function ShowPage(pageName)
     end
 
     for i = 1, #tabs do
-        if tabs[i].pageName == pageName then
+        if tabs[i].pageName == currentPageName then
             index = i
             PanelTemplates_SelectTab(tabs[i])
         else
@@ -730,7 +812,7 @@ local function CreateRosterPage(parent)
             if parentRow.nameValue and API.SendNumberWhisperToName(parentRow.nameValue) then
                 SetRosterStatus("Sent number to " .. parentRow.nameValue .. ".")
             else
-                SetRosterStatus("No recorded number for this player.")
+                SetRosterStatus("Start numbering before sending MG number whispers.")
             end
         end)
 
@@ -758,7 +840,7 @@ local function CreateRosterPage(parent)
 
     rosterStartButton = CreateButton(page, "Start", 0, -406, 76, 22, function()
         if not API.CanModifyRoster() then
-            SetRosterStatus("Roster is locked while a game session is active.")
+            SetRosterStatus("Roster is locked while a game session is active or a roll is pending.")
             return
         end
 
@@ -776,18 +858,18 @@ local function CreateRosterPage(parent)
 
     rosterStopButton = CreateButton(page, "Stop", 84, -406, 64, 22, function()
         if not API.CanModifyRoster() then
-            SetRosterStatus("Roster is locked while a game session is active.")
+            SetRosterStatus("Roster is locked while a game session is active or a roll is pending.")
             return
         end
 
         API.StopRaidNumbering()
-        SetRosterStatus("Numbering stopped. Recorded data kept.")
+        SetRosterStatus("Numbering stopped. Recorded data kept; whispers disabled until numbering starts again.")
         RefreshAll()
     end)
 
     rosterResetButton = CreateButton(page, "Reset", 156, -406, 70, 22, function()
         if not API.CanModifyRoster() then
-            SetRosterStatus("Roster is locked while a game session is active.")
+            SetRosterStatus("Roster is locked while a game session is active or a roll is pending.")
             return
         end
 
@@ -797,20 +879,26 @@ local function CreateRosterPage(parent)
         RefreshAll()
     end)
 
-    CreateButton(page, "Rounds 0", 234, -406, 92, 22, function()
-        API.ResetRounds()
-        SetRosterStatus("Rounds reset.")
+    resetRoundsButton = CreateButton(page, "Rounds 0", 234, -406, 92, 22, function()
+        local ok, result = API.ResetRounds()
+
+        if ok then
+            SetRosterStatus("Rounds reset.")
+        else
+            SetRosterStatus("Cannot reset rounds: " .. tostring(result))
+        end
+
         RefreshAll()
     end)
 
     rosterSendButton = CreateButton(page, "Whisper MG Numbers (0)", 0, -434, 242, 24, function()
         if not API.CanModifyRoster() then
-            SetRosterStatus("Roster is locked while a game session is active.")
+            SetRosterStatus("Roster is locked while a game session is active or a roll is pending.")
             return
         end
 
-        if API.CountRaidNumbers() <= 0 then
-            SetRosterStatus("No recorded MG numbers to whisper.")
+        if not API.HasRaidNumbers() or API.CountRaidNumbers() <= 0 then
+            SetRosterStatus("Start numbering before sending MG number whispers.")
             return
         end
 
@@ -1111,7 +1199,12 @@ function UI.Show()
     end
 
     frame:Show()
-    RefreshAll()
+
+    if collapsed then
+        SetCollapsed(false)
+    else
+        RefreshAll()
+    end
 end
 
 function UI.Hide()
@@ -1155,6 +1248,14 @@ function UI.Create()
     frame.title = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
     frame.title:SetPoint("LEFT", frame.TitleBg, "LEFT", 6, 0)
     frame.title:SetText("MicroGames")
+
+    collapseButton = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
+    collapseButton:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -32, -4)
+    collapseButton:SetSize(46, 20)
+    collapseButton:SetText("Mini")
+    collapseButton:SetScript("OnClick", function()
+        SetCollapsed(not collapsed)
+    end)
 
     pages.control = CreateControlPage(frame)
     pages.roster = CreateRosterPage(frame)
@@ -1204,6 +1305,22 @@ function UI.Create()
 
     PanelTemplates_SetNumTabs(frame, 5)
     ShowPage("control")
+
+    tradeEventFrame = CreateFrame("Frame")
+    tradeEventFrame:RegisterEvent("TRADE_SHOW")
+    tradeEventFrame:RegisterEvent("TRADE_CLOSED")
+    tradeEventFrame:SetScript("OnEvent", function(self, event)
+        if event == "TRADE_SHOW" and frame and frame:IsShown() and not collapsed then
+            collapsedForTrade = true
+            SetCollapsed(true)
+        elseif event == "TRADE_CLOSED" and collapsedForTrade then
+            collapsedForTrade = false
+
+            if frame and frame:IsShown() then
+                SetCollapsed(false)
+            end
+        end
+    end)
 
     return frame
 end

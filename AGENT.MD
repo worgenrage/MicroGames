@@ -61,6 +61,7 @@
 - Reset should clear recorded assignments.
 - Number whispers must use the recorded snapshot from `StartRaidNumbering()`, not the current live raid roster.
 - `StartRaidNumbering()` must not send whispers automatically; sending numbers is a separate explicit UX action through `SendNumbers()`.
+- Number whispers require active numbering; stopped snapshots may be viewed but must not be used for sending.
 - The default number whisper text is `Your MG number is: XX`; UI-provided text should be saved through the API and use `XX` as the number placeholder.
 - Number whisper text must persist through `MicroGamesDB.numberWhisperText`.
 - The current scope is game-master-only, so addon-message synchronization is not required yet.
@@ -70,6 +71,7 @@
 
 - Do not advance rounds during addon load.
 - `RoundRoll()` is the explicit UX action for the `Round Roll` button.
+- `RoundRoll()` and `RerollCurrentRound()` require an active game session.
 - Each `RoundRoll()` call increments the round counter by 1.
 - `RerollCurrentRound()` must roll again for the current round without incrementing the round counter.
 - Rerolls should be recorded under the same round in session data.
@@ -81,6 +83,7 @@
 - Use `RandomRoll(1, recordedCount)` for the actual roll; `BuildRollCommand()` is only a display preview.
 - Detect the pending roll result from `CHAT_MSG_SYSTEM`, accept only the game master's own roll, and resolve the winner against the recorded snapshot.
 - Roll result parsing only needs to support English client `CHAT_MSG_SYSTEM` roll messages.
+- Pending roll state must not persist through `/reload` because scheduled roll timers do not survive reload.
 - The UI should prominently show the winner number and matching player name after a roll.
 - Winner display should be visually separated from normal status text with a highlighted panel/color.
 - Winner buttons should send `You win ROUND X come closer! :)` through say or whisper as separate explicit actions.
@@ -93,6 +96,7 @@
 - Reward yell text should start with the winner name in `[WinnerName]: reward` format.
 - Reward yell buttons should be available from the Control tab during gameplay.
 - `Round Roll` should be the visually dominant gameplay action, with setup/reset controls kept compact.
+- `Rounds 0` must not run while a roll is pending.
 - Keep the detailed model in `docs/Rounds.md` in sync with implementation changes.
 
 ## UI Model
@@ -100,6 +104,9 @@
 - Keep visible UI text in English.
 - The main UI must be movable.
 - Closing the UI must only hide it and must not reset numbering, rounds, whisper text, or game state.
+- The main UI should support a collapsed mini mode that keeps state and can be expanded again.
+- Opening a trade window should automatically collapse the main UI if it is visible.
+- Closing a trade window should expand the main UI only if trade opening collapsed it automatically.
 - Use tabs for separate concerns such as Control, Roster, Rewards, History, and Settings.
 - Loading the addon may create UI and register slash commands, but must not count raid members, send whispers, or advance rounds.
 - Keep UI behavior documented in `docs/UI.md`.
@@ -111,9 +118,10 @@
 - `START GAME` starts or resumes the active session.
 - `START GAME` must not create a second session if one is already active; return/report `ACTIVE_SESSION_EXISTS`.
 - `STOP GAME` stops the active session, saves collected data to history, and clears runtime roster/round/winner state so the next game starts from a fresh raid snapshot.
+- `STOP GAME` must not run while a roll is pending.
 - UI buttons should visually reflect session state: START disabled while active, STOP disabled while inactive.
 - UI should show a clear state line such as `EVENT STARTED - ROUND X - MEMBERS X`.
 - Roster setup controls must use a Roster-local status line.
-- Roster setup controls must be locked while a game session is active or a roll is pending, except `Rounds 0`.
+- Roster setup controls must be locked while a game session is active or a roll is pending; `Rounds 0` remains available during an active game but must be disabled while a roll is pending.
 - Active session state must survive `/reload`, window close/open, and addon UI recreation.
 - Keep session persistence documented in `docs/Sessions.md`.

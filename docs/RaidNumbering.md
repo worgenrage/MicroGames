@@ -21,6 +21,7 @@ Counting only happens when the game master explicitly starts the numbering flow 
 - A player leaving the raid does not free or shift their `gameNumber`.
 - New players do not receive a number automatically during an active game.
 - `addon.API.StopRaidNumbering()` marks the numbering as inactive but keeps the recorded names and numbers.
+- Stopped/inactive numbering snapshots can be viewed but cannot be used to send number whispers.
 - `addon.API.ResetRaidNumbering()` clears all recorded names and numbers.
 - Resetting raid numbering also resets the round counter.
 
@@ -48,6 +49,7 @@ addon.API.ResetRaidNumbering()
 The game master can send the assigned number to every recorded raid member by whisper from a separate UX action, for example a `SendNumbers` button.
 Starting raid numbering does not send any messages.
 Whispers use the snapshot created by `addon.API.StartRaidNumbering()`, not the current live raid roster.
+Whispers require active numbering. After `addon.API.StopRaidNumbering()`, the recorded snapshot remains visible, but number whispers do not send until numbering is started again.
 
 The default whisper text is:
 
@@ -66,7 +68,7 @@ local sentToOne = addon.API.SendNumberWhisperToName("Playername")
 local sentCount = addon.API.SendNumbers()
 ```
 
-`addon.API.SendNumbers()` sends one immediate whisper per recorded player. If chat throttling becomes a problem, this function should be changed to use a queued sender.
+`addon.API.SendNumbers()` sends one immediate whisper per recorded player while numbering is active. If chat throttling becomes a problem, this function should be changed to use a queued sender.
 The whisper text is stored in `MicroGamesDB.numberWhisperText`.
 
 Compatibility aliases are currently available:

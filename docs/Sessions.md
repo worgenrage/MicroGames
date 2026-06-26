@@ -14,6 +14,7 @@ MicroGames keeps the active game session in SavedVariables so reloads and window
 - If no raid numbers exist yet, it creates a raid numbering snapshot first.
 - It stores the roster snapshot, start timestamp, current round, rounds, and rewards.
 - If an active session already exists after reload, it restores that session.
+- Pending roll state is cleared on reload because scheduled roll timers do not survive reload.
 - If the user presses `START GAME` while a session is already active, the API returns `ACTIVE_SESSION_EXISTS` and does not start another session.
 - While a session is active, roster setup should be locked so the active snapshot cannot be changed accidentally.
 
@@ -21,6 +22,7 @@ MicroGames keeps the active game session in SavedVariables so reloads and window
 
 `addon.API.StopGameSession()` stops the active session and appends it to `MicroGamesDB.history`.
 After the completed session is saved, the runtime roster snapshot, round state, pending roll state, and last winner state are cleared so the next `START GAME` records a fresh raid snapshot.
+Stopping a game is blocked while a roll is pending.
 
 The saved session includes:
 

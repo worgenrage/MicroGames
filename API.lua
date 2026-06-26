@@ -11,6 +11,7 @@ local assignedCount = 0
 local assignmentActive = false
 local currentRound = 0
 local pendingRollRound = nil
+local pendingRollMax = nil
 local lastWinnerRound = nil
 local lastWinnerNumber = nil
 local lastWinnerName = nil
@@ -124,7 +125,8 @@ local function PersistActiveSessionState()
     session.lastWinnerRound = lastWinnerRound
     session.lastWinnerNumber = lastWinnerNumber
     session.lastWinnerName = lastWinnerName
-    session.pendingRollRound = pendingRollRound
+    session.pendingRollRound = nil
+    session.pendingRollMax = nil
 
     return session
 end
@@ -139,7 +141,10 @@ local function RestoreActiveSessionState()
     RestoreRosterSnapshot(session.roster)
     assignmentActive = assignedCount > 0
     currentRound = session.currentRound or 0
-    pendingRollRound = session.pendingRollRound
+    pendingRollRound = nil
+    pendingRollMax = nil
+    session.pendingRollRound = nil
+    session.pendingRollMax = nil
     lastWinnerRound = session.lastWinnerRound
     lastWinnerNumber = session.lastWinnerNumber
     lastWinnerName = session.lastWinnerName
@@ -147,7 +152,7 @@ local function RestoreActiveSessionState()
     return true
 end
 
-local function RecordSessionRound(roundNumber)
+local function RecordSessionRound(roundNumber, rollMax)
     local session = EnsureSettings().activeSession
 
     if type(session) ~= "table" then
@@ -162,7 +167,7 @@ local function RecordSessionRound(roundNumber)
         round = roundNumber,
         announcedAt = GetTimestamp(),
         rollMin = 1,
-        rollMax = assignedCount
+        rollMax = rollMax or assignedCount
     }
 end
 
@@ -275,7 +280,7 @@ local function HandleSystemMessage(message)
 
     roller, roll, minimum, maximum = ParseRollMessage(message)
 
-    if not roll or minimum ~= 1 or maximum ~= assignedCount then
+    if not roll or minimum ~= 1 or maximum ~= pendingRollMax then
         return
     end
 
@@ -288,6 +293,7 @@ local function HandleSystemMessage(message)
     SetLastWinner(pendingRollRound, roll)
     RecordSessionRollResult(pendingRollRound, roll, lastWinnerName)
     pendingRollRound = nil
+    pendingRollMax = nil
     PersistActiveSessionState()
 
     if addon.UI and addon.UI.Refresh then
@@ -321,7 +327,7 @@ function API.StartRaidNumbering()
         end
     end
 
-    assignmentActive = true
+    assignmentActive = assignedCount > 0
     PersistActiveSessionState()
 
     return assignedCount
@@ -338,6 +344,7 @@ function API.ResetRaidNumbering()
     assignmentActive = false
     currentRound = 0
     pendingRollRound = nil
+    pendingRollMax = nil
     lastWinnerRound = nil
     lastWinnerNumber = nil
     lastWinnerName = nil
@@ -351,6 +358,7 @@ function API.ResetAllData()
     assignmentActive = false
     currentRound = 0
     pendingRollRound = nil
+    pendingRollMax = nil
     lastWinnerRound = nil
     lastWinnerNumber = nil
     lastWinnerName = nil
@@ -431,7 +439,7 @@ end
 function API.SendNumberWhisperToName(name)
     local number = API.GetRaidNumberByName(name)
 
-    if not number then
+    if not assignmentActive or not number then
         return false
     end
 
@@ -442,6 +450,10 @@ end
 
 function API.SendNumbers()
     local sentCount = 0
+
+    if not assignmentActive then
+        return 0
+    end
 
     for number = 1, assignedCount do
         local name = namesByNumber[number]
@@ -472,12 +484,28 @@ function API.GetPreviousRound()
 end
 
 function API.ResetRounds()
+    local session
+
+    if pendingRollRound then
+        return false, "ROLL_PENDING"
+    end
+
     currentRound = 0
-    pendingRollRound = nil
+    pendingRollMax = nil
     lastWinnerRound = nil
     lastWinnerNumber = nil
     lastWinnerName = nil
+
+    session = EnsureSettings().activeSession
+
+    if type(session) == "table" and session.status == "active" then
+        session.rounds = {}
+        session.rewards = {}
+    end
+
     PersistActiveSessionState()
+
+    return true, "ROUNDS_RESET"
 end
 
 function API.SetRoundRollDelay(seconds)
@@ -659,7 +687,7 @@ function API.StartGameSession()
         return false, "ACTIVE_SESSION_EXISTS"
     end
 
-    if assignedCount <= 0 then
+    if not assignmentActive or assignedCount <= 0 then
         API.StartRaidNumbering()
     end
 
@@ -692,6 +720,10 @@ function API.StopGameSession()
         return false, "NO_ACTIVE_SESSION"
     end
 
+    if pendingRollRound then
+        return false, "ROLL_PENDING"
+    end
+
     PersistActiveSessionState()
 
     session.status = "stopped"
@@ -711,6 +743,7 @@ function API.StopGameSession()
     assignmentActive = false
     currentRound = 0
     pendingRollRound = nil
+    pendingRollMax = nil
     lastWinnerRound = nil
     lastWinnerNumber = nil
     lastWinnerName = nil
@@ -761,6 +794,10 @@ function API.RoundRoll()
     local rollRound
     local rollMax
 
+    if not API.HasActiveGameSession() then
+        return false, "NO_ACTIVE_SESSION"
+    end
+
     if assignedCount <= 0 then
         return false, "NO_RAID_NUMBERS"
     end
@@ -773,19 +810,27 @@ function API.RoundRoll()
     pendingRollRound = currentRound
     rollRound = currentRound
     rollMax = assignedCount
-    RecordSessionRound(currentRound)
+    pendingRollMax = rollMax
+    RecordSessionRound(currentRound, rollMax)
     PersistActiveSessionState()
 
     SendRaidMessage(API.BuildRoundMessage(currentRound))
 
     C_Timer.After(delay, function()
-        RandomRoll(1, rollMax)
+        if pendingRollRound == rollRound and pendingRollMax == rollMax then
+            RandomRoll(1, rollMax)
+        end
     end)
 
     C_Timer.After(delay + 10, function()
         if pendingRollRound == rollRound then
             pendingRollRound = nil
+            pendingRollMax = nil
             PersistActiveSessionState()
+
+            if addon.UI and addon.UI.Refresh then
+                addon.UI.Refresh()
+            end
         end
     end)
 
@@ -796,6 +841,10 @@ function API.RerollCurrentRound()
     local delay = API.GetRoundRollDelay()
     local rerollRound = currentRound
     local rollMax = assignedCount
+
+    if not API.HasActiveGameSession() then
+        return false, "NO_ACTIVE_SESSION"
+    end
 
     if assignedCount <= 0 then
         return false, "NO_RAID_NUMBERS"
@@ -810,16 +859,24 @@ function API.RerollCurrentRound()
     end
 
     pendingRollRound = rerollRound
+    pendingRollMax = rollMax
     PersistActiveSessionState()
 
     C_Timer.After(delay, function()
-        RandomRoll(1, rollMax)
+        if pendingRollRound == rerollRound and pendingRollMax == rollMax then
+            RandomRoll(1, rollMax)
+        end
     end)
 
     C_Timer.After(delay + 10, function()
         if pendingRollRound == rerollRound then
             pendingRollRound = nil
+            pendingRollMax = nil
             PersistActiveSessionState()
+
+            if addon.UI and addon.UI.Refresh then
+                addon.UI.Refresh()
+            end
         end
     end)
 

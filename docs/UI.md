@@ -2,6 +2,10 @@
 
 MicroGames uses a movable in-game window opened with `/mg` or `/microgames`.
 Closing the window only hides it. It must not reset numbering, rounds, whisper text, or any game state.
+The `Mini` button collapses the window to a small frame without hiding or resetting it.
+The `Open` button expands the collapsed frame back to the current tab.
+When the WoW trade window opens, MicroGames automatically collapses if it is visible.
+When the trade window closes, MicroGames expands again only if the trade opening caused the collapse.
 
 ## Tabs
 
@@ -17,7 +21,9 @@ Closing the window only hides it. It must not reset numbering, rounds, whisper t
 - Loading the addon should only create UI and register commands.
 - Starting numbering should only record the current raid snapshot.
 - Sending numbers should be a separate explicit action.
+- Sending numbers requires active numbering; stopped snapshots remain visible but cannot be whispered.
 - Round Roll should increment the round, announce `ROUND X`, and then roll after the configured delay.
+- Round Roll and reroll require an active game session.
 - `Roll again for ROUND X` should be a smaller centered button below `Round Roll`.
 - Rerolling must not increment or change the current round.
 - After a roll result is detected, the UI should prominently show the winner number and matching player name.
@@ -29,7 +35,7 @@ Closing the window only hides it. It must not reset numbering, rounds, whisper t
 - The Control tab should display a clear text status such as `EVENT STARTED - ROUND X - MEMBERS X`.
 - Roster setup controls such as start numbering, send numbers, stop numbering, reset, and reset rounds should live on the Roster tab.
 - Roster setup controls should write to a Roster-local status line, not the Control status line.
-- While a game session is active or a roll is pending, roster setup controls must be disabled/greyed except `Rounds 0`.
+- While a game session is active or a roll is pending, roster setup controls must be disabled/greyed. `Rounds 0` remains available during an active game session but is disabled while a roll is pending.
 - Tabs must stay inside the main window bounds, not below or outside the frame.
 - The main window should use a high enough frame strata/level to avoid click-through into action bar addons.
 - Reward yell templates should be sent only by explicit button press.
@@ -37,6 +43,7 @@ Closing the window only hides it. It must not reset numbering, rounds, whisper t
 - Number whisper text is stored in `MicroGamesDB.numberWhisperText`.
 - Round roll delay is stored in `MicroGamesDB.roundRollDelay`.
 - Hiding or closing the UI should preserve all process state.
+- Collapsing and expanding the UI should preserve all process state and the selected tab.
 
 ## Control Bindings
 
@@ -44,7 +51,7 @@ Closing the window only hides it. It must not reset numbering, rounds, whisper t
 - `STOP GAME` calls `addon.API.StopGameSession()`, stores the completed session in history, and clears runtime roster/round/winner state for the next game.
 - If an active session exists, `StartGameSession()` returns `ACTIVE_SESSION_EXISTS` and must not start a second session.
 - `Start Numbering` calls `addon.API.StartRaidNumbering()` and records the current raid snapshot.
-- `Send Numbers` calls `addon.API.SendNumbers()` and whispers numbers to recorded players.
+- `Send Numbers` calls `addon.API.SendNumbers()` and whispers numbers to recorded players only while numbering is active.
 - `Round Roll` calls `addon.API.RoundRoll()`, announces the next round, then rolls after the configured delay.
 - `Roll again for ROUND X` calls `addon.API.RerollCurrentRound()`.
 - `Say Winner` calls `addon.API.SendWinnerSay()` with `You win ROUND X come closer! :)`.
@@ -72,7 +79,7 @@ Closing the window only hides it. It must not reset numbering, rounds, whisper t
 - The Roster tab reads `addon.API.GetRaidNumberEntries()`.
 - Each visible roster row can call `addon.API.SendNumberWhisperToName(name)` for a single recorded player.
 - Roster setup buttons call `StartRaidNumbering()`, `SendNumbers()`, `StopRaidNumbering()`, `ResetRaidNumbering()`, and `ResetRounds()`.
-- During an active game session or pending roll, roster setup buttons must not modify the roster; `Rounds 0` remains available.
+- During an active game session or pending roll, roster setup buttons must not modify the roster. `Rounds 0` remains available during an active game session but not while a roll is pending.
 - Roster pagination is UI-only and must not change recorded data.
 
 ## Settings Bindings

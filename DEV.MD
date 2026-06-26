@@ -64,6 +64,8 @@ addon.API.SendNumbers()
 addon.API.SendNumberWhisperToName(name)
 ```
 
+Number whispers require active numbering. `StopRaidNumbering()` keeps the recorded list visible but disables number whisper sending until numbering is started again.
+
 Default number whisper:
 
 ```text
@@ -96,7 +98,7 @@ Rules:
 - After `STOP GAME` saves the completed session, runtime roster, round, pending roll, and winner state are cleared so the next game uses a fresh raid snapshot.
 - Active sessions are stored in `MicroGamesDB.activeSession`.
 - Completed sessions are stored in `MicroGamesDB.history`.
-- While a game session is active or a roll is pending, roster setup controls are locked except `Rounds 0`.
+- While a game session is active or a roll is pending, roster setup controls are locked. `Rounds 0` remains available during an active game session but is disabled while a roll is pending.
 
 Saved session data includes:
 
@@ -131,11 +133,13 @@ addon.API.GetRoundRollDelay()
 Rules:
 
 - `RoundRoll()` increments the round counter.
+- `RoundRoll()` and `RerollCurrentRound()` require an active game session.
 - It announces `ROUND X` in raid chat.
 - After the configured delay, it rolls `RandomRoll(1, assignedCount)`.
 - Roll range is based on the recorded raid snapshot count.
 - `RerollCurrentRound()` rolls again for the current round without incrementing the round counter.
 - `RoundRoll()` and `RerollCurrentRound()` return `ROLL_PENDING` while a previous delayed roll is still pending.
+- Pending roll state is not restored after `/reload` because scheduled roll timers do not survive reload.
 - Rerolls are saved under the same round as additional roll entries.
 - Roll result detection listens to `CHAT_MSG_SYSTEM`.
 - Only the game master's own pending roll is accepted.
@@ -196,6 +200,10 @@ The main UI is movable and uses high enough frame strata/level to avoid click-th
 - `DIALOG` strata
 - frame level `100`
 - tabs are inside the main frame bounds
+- `Mini` collapses the UI to a small frame without resetting state
+- `Open` expands the collapsed frame back to the current tab
+- `TRADE_SHOW` automatically collapses the UI when the frame is visible
+- `TRADE_CLOSED` expands it again only when trade opening caused the collapse
 
 Tabs:
 
@@ -252,7 +260,7 @@ Contains:
   - `Rounds 0`
 - Roster-local status line
 
-Roster setup controls are locked while a game session is active or a roll is pending, except `Rounds 0`.
+Roster setup controls are locked while a game session is active or a roll is pending. `Rounds 0` remains available during an active game session but is disabled while a roll is pending.
 
 ### Rewards
 
