@@ -98,7 +98,7 @@ Rules:
 - After `STOP GAME` saves the completed session, runtime roster, round, pending roll, and winner state are cleared so the next game uses a fresh raid snapshot.
 - Active sessions are stored in `MicroGamesDB.activeSession`.
 - Completed sessions are stored in `MicroGamesDB.history`.
-- While a game session is active or a roll is pending, roster setup controls are locked. `Rounds 0` remains available during an active game session but is disabled while a roll is pending.
+- While a game session is active or a roll is pending, setup controls are locked.
 
 Saved session data includes:
 
@@ -208,7 +208,7 @@ The main UI is movable and uses high enough frame strata/level to avoid click-th
 Tabs:
 
 - `Control`
-- `Roster`
+- `Setup`
 - `Rewards`
 - `History`
 - `Settings`
@@ -243,24 +243,22 @@ EVENT STOPPED - ROUND X - MEMBERS X
 - Start disabled while active
 - Stop disabled while inactive
 
-### Roster
+### Setup
 
-Roster snapshot and setup tab.
+Raid snapshot and setup tab.
 
 Contains:
 
 - recorded player number/name list
 - per-player send button
 - roster pagination
-- roster setup buttons:
-  - `Start`
-  - `Send #`
-  - `Stop`
-  - `Reset`
-  - `Rounds 0`
-- Roster-local status line
+- setup buttons:
+  - `Record Raid`
+  - `Send Numbers`
+  - `Clear Raid`
+- Setup-local status line
 
-Roster setup controls are locked while a game session is active or a roll is pending. `Rounds 0` remains available during an active game session but is disabled while a roll is pending.
+Setup controls, including per-player number sends, are locked while a game session is active or a roll is pending.
 
 ### Rewards
 

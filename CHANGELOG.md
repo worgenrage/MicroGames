@@ -1,6 +1,18 @@
 # Changelog
 
-## Unreleased
+## 0.1.4
+
+- Hardened game state transitions so round rolls and rerolls require an active game session.
+- Prevented pending roll state from persisting through reloads.
+- Blocked stopping a game or resetting rounds while a roll is pending.
+- Prevented stopped/inactive raid snapshots from sending number whispers.
+- Added a `Mini` / `Open` collapse control for the main UI.
+- Automatically collapses the UI when trade opens and restores it when trade closes if trade caused the collapse.
+- Simplified the Roster tab into a Setup flow with `Record Raid`, `Send Numbers`, and `Clear Raid`.
+- Locked Setup controls and per-player number sends while a game session is active or a roll is pending.
+- Updated project documentation for English-only roll parsing, Setup behavior, and collapse behavior.
+
+## 0.1.3
 
 - Bumped addon metadata version to `0.1.3`.
 - Added stone-silver section separators across the MicroGames UI tabs.

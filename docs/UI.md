@@ -10,7 +10,7 @@ When the trade window closes, MicroGames expands again only if the trade opening
 ## Tabs
 
 - Control: Round roll, winner status, winner actions, reward yells, and compact setup controls.
-- Roster: Shows the recorded name and number snapshot from `StartRaidNumbering()` and roster setup controls.
+- Setup: Shows the recorded name and number snapshot from `StartRaidNumbering()` and setup controls.
 - Rewards: Edits reward yell templates and provides a secondary reward view.
 - History: Shows completed sessions, session details, round results, winners, and rewards.
 - Settings: Edits the whisper text and round roll delay.
@@ -33,9 +33,9 @@ When the trade window closes, MicroGames expands again only if the trade opening
 - `START GAME` should be disabled/greyed when a game session is already active.
 - `STOP GAME` should be disabled/greyed when no game session is active.
 - The Control tab should display a clear text status such as `EVENT STARTED - ROUND X - MEMBERS X`.
-- Roster setup controls such as start numbering, send numbers, stop numbering, reset, and reset rounds should live on the Roster tab.
-- Roster setup controls should write to a Roster-local status line, not the Control status line.
-- While a game session is active or a roll is pending, roster setup controls must be disabled/greyed. `Rounds 0` remains available during an active game session but is disabled while a roll is pending.
+- Setup controls such as record raid, send numbers, and clear raid should live on the Setup tab.
+- Setup controls should write to a Setup-local status line, not the Control status line.
+- While a game session is active or a roll is pending, setup controls and per-player number sends must be disabled/greyed.
 - Tabs must stay inside the main window bounds, not below or outside the frame.
 - The main window should use a high enough frame strata/level to avoid click-through into action bar addons.
 - Reward yell templates should be sent only by explicit button press.
@@ -50,16 +50,14 @@ When the trade window closes, MicroGames expands again only if the trade opening
 - `START GAME` calls `addon.API.StartGameSession()`.
 - `STOP GAME` calls `addon.API.StopGameSession()`, stores the completed session in history, and clears runtime roster/round/winner state for the next game.
 - If an active session exists, `StartGameSession()` returns `ACTIVE_SESSION_EXISTS` and must not start a second session.
-- `Start Numbering` calls `addon.API.StartRaidNumbering()` and records the current raid snapshot.
+- `Record Raid` calls `addon.API.StartRaidNumbering()` and records the current raid snapshot.
 - `Send Numbers` calls `addon.API.SendNumbers()` and whispers numbers to recorded players only while numbering is active.
 - `Round Roll` calls `addon.API.RoundRoll()`, announces the next round, then rolls after the configured delay.
 - `Roll again for ROUND X` calls `addon.API.RerollCurrentRound()`.
 - `Say Winner` calls `addon.API.SendWinnerSay()` with `You win ROUND X come closer! :)`.
 - `Whisper Winner` calls `addon.API.SendWinnerWhisper()` with `You win ROUND X come closer! :)`.
 - Reward buttons call `addon.API.SendRewardYell(index)` from the Control tab during gameplay.
-- `Stop` calls `addon.API.StopRaidNumbering()` and keeps recorded data.
-- `Reset` calls `addon.API.ResetRaidNumbering()` and clears recorded names, numbers, and rounds.
-- `Reset Rounds` calls `addon.API.ResetRounds()` and only clears the round counter.
+- `Clear Raid` calls `addon.API.ResetRaidNumbering()` and clears recorded names, numbers, and rounds.
 - The Control tab displays `HasRaidNumbers()`, `CountRaidNumbers()`, `GetCurrentRound()`, `BuildPreviousRoundMessage()`, `BuildRoundMessage()`, and `BuildRollCommand()` output.
 - The Control tab displays `BuildLastWinnerText()` and `BuildWinnerMessage()` after a detected roll.
 - The Control tab displays active game session state from `GetGameSessionSummary()`.
@@ -74,12 +72,12 @@ When the trade window closes, MicroGames expands again only if the trade opening
 - The reward input calls `addon.API.AddRewardTemplate(text)`.
 - Reward row remove buttons call `addon.API.RemoveRewardTemplate(index)`.
 
-## Roster Bindings
+## Setup Bindings
 
-- The Roster tab reads `addon.API.GetRaidNumberEntries()`.
-- Each visible roster row can call `addon.API.SendNumberWhisperToName(name)` for a single recorded player.
-- Roster setup buttons call `StartRaidNumbering()`, `SendNumbers()`, `StopRaidNumbering()`, `ResetRaidNumbering()`, and `ResetRounds()`.
-- During an active game session or pending roll, roster setup buttons must not modify the roster. `Rounds 0` remains available during an active game session but not while a roll is pending.
+- The Setup tab reads `addon.API.GetRaidNumberEntries()`.
+- Each visible roster row can call `addon.API.SendNumberWhisperToName(name)` for a single recorded player while setup is unlocked.
+- Setup buttons call `StartRaidNumbering()`, `SendNumbers()`, and `ResetRaidNumbering()`.
+- During an active game session or pending roll, setup buttons must not modify the roster or send number whispers.
 - Roster pagination is UI-only and must not change recorded data.
 
 ## Settings Bindings

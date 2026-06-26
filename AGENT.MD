@@ -107,7 +107,7 @@
 - The main UI should support a collapsed mini mode that keeps state and can be expanded again.
 - Opening a trade window should automatically collapse the main UI if it is visible.
 - Closing a trade window should expand the main UI only if trade opening collapsed it automatically.
-- Use tabs for separate concerns such as Control, Roster, Rewards, History, and Settings.
+- Use tabs for separate concerns such as Control, Setup, Rewards, History, and Settings.
 - Loading the addon may create UI and register slash commands, but must not count raid members, send whispers, or advance rounds.
 - Keep UI behavior documented in `docs/UI.md`.
 
@@ -121,7 +121,7 @@
 - `STOP GAME` must not run while a roll is pending.
 - UI buttons should visually reflect session state: START disabled while active, STOP disabled while inactive.
 - UI should show a clear state line such as `EVENT STARTED - ROUND X - MEMBERS X`.
-- Roster setup controls must use a Roster-local status line.
-- Roster setup controls must be locked while a game session is active or a roll is pending; `Rounds 0` remains available during an active game but must be disabled while a roll is pending.
+- Setup controls must use a Setup-local status line.
+- Setup controls must be locked while a game session is active or a roll is pending.
 - Active session state must survive `/reload`, window close/open, and addon UI recreation.
 - Keep session persistence documented in `docs/Sessions.md`.
