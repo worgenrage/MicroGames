@@ -35,6 +35,7 @@ Current stored fields:
 
 - `MicroGamesDB.numberWhisperText`
 - `MicroGamesDB.roundRollDelay`
+- `MicroGamesDB.rollCountdownSoundEnabled`
 - `MicroGamesDB.rewardTemplates`
 - `MicroGamesDB.activeSession`
 - `MicroGamesDB.history`
@@ -128,6 +129,8 @@ addon.API.BuildRollCommand()
 addon.API.BuildRerollButtonText()
 addon.API.SetRoundRollDelay(seconds)
 addon.API.GetRoundRollDelay()
+addon.API.SetRollCountdownSoundEnabled(enabled)
+addon.API.GetRollCountdownSoundEnabled()
 ```
 
 Rules:
@@ -136,6 +139,8 @@ Rules:
 - `RoundRoll()` and `RerollCurrentRound()` require an active game session.
 - It announces `ROUND X` in raid chat.
 - After the configured delay, it rolls `RandomRoll(1, assignedCount)`.
+- If `Roll Countdown Sound` is enabled, `RAID_WARNING` countdown messages are sent during the configured delay so raid members receive the normal raid warning alert.
+- The game master may need raid leader or assistant permissions for raid warning countdown messages.
 - Roll range is based on the recorded raid snapshot count.
 - `RerollCurrentRound()` rolls again for the current round without incrementing the round counter.
 - `RoundRoll()` and `RerollCurrentRound()` return `ROLL_PENDING` while a previous delayed roll is still pending.
@@ -290,6 +295,7 @@ Contains:
 
 - number whisper text
 - round roll delay
+- roll countdown sound
 - two-step `RESET ALL` data wipe control
 
 `RESET ALL` clears runtime state and resets `MicroGamesDB`, including active session, completed history, reward templates, round state, roster snapshot, and settings.

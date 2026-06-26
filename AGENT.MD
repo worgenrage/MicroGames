@@ -91,12 +91,14 @@
 - Reward templates must be expandable from the UI.
 - Reward templates must persist through `MicroGamesDB.rewardTemplates`.
 - Round roll delay must persist through `MicroGamesDB.roundRollDelay`.
+- Roll countdown sound must persist through `MicroGamesDB.rollCountdownSoundEnabled`.
 - Reward yells must be explicit button actions and must not be automatic after a roll.
 - Reward history entries must only be recorded by an explicit reward button action through `SendRewardYell()`.
 - Reward yell text should start with the winner name in `[WinnerName]: reward` format.
 - Reward yell buttons should be available from the Control tab during gameplay.
 - `Round Roll` should be the visually dominant gameplay action, with setup/reset controls kept compact.
 - `Rounds 0` must not run while a roll is pending.
+- `Roll Countdown Sound` should send `RAID_WARNING` countdown messages during the configured roll delay when enabled, so raid members receive the normal raid warning alert.
 - Keep the detailed model in `docs/Rounds.md` in sync with implementation changes.
 
 ## UI Model

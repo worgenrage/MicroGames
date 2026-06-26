@@ -52,6 +52,7 @@ local winnerMessageText
 local whisperEditBox
 local whisperPreviewText
 local delayEditBox
+local countdownSoundCheckBox
 local rosterPageText
 local controlRewardButtonPageText
 local rewardsRewardButtonPageText
@@ -489,6 +490,10 @@ local function RefreshAll()
         delayEditBox:SetText(tostring(API.GetRoundRollDelay()))
     end
 
+    if countdownSoundCheckBox then
+        countdownSoundCheckBox:SetChecked(API.GetRollCountdownSoundEnabled())
+    end
+
     if rewardEditBox then
         rewardEditBox:SetText("")
     end
@@ -632,6 +637,17 @@ local function CreateEditBox(parent, x, y, width, height)
     editBox:SetSize(width, height)
     editBox:SetAutoFocus(false)
     return editBox
+end
+
+local function CreateCheckBox(parent, text, x, y, onClick)
+    local checkBox = CreateFrame("CheckButton", nil, parent, "UICheckButtonTemplate")
+    checkBox:SetPoint("TOPLEFT", parent, "TOPLEFT", x, y)
+    checkBox:SetSize(24, 24)
+    checkBox.text = checkBox:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    checkBox.text:SetPoint("LEFT", checkBox, "RIGHT", 4, 0)
+    checkBox.text:SetText(text)
+    checkBox:SetScript("OnClick", onClick)
+    return checkBox
 end
 
 local function CreateControlPage(parent)
@@ -1118,11 +1134,17 @@ local function CreateSettingsPage(parent)
         RefreshAll()
     end)
 
-    CreateSeparator(page, -220)
+    countdownSoundCheckBox = CreateCheckBox(page, "Roll Countdown Sound", 0, -204, function(self)
+        API.SetRollCountdownSoundEnabled(self:GetChecked())
+        SetStatus("Roll countdown sound " .. (self:GetChecked() and "enabled." or "disabled."))
+        RefreshAll()
+    end)
 
-    CreateLabel(page, "Danger zone", 0, -230)
+    CreateSeparator(page, -244)
 
-    CreateButton(page, "RESET ALL", 0, -258, 120, 24, function()
+    CreateLabel(page, "Danger zone", 0, -254)
+
+    CreateButton(page, "RESET ALL", 0, -282, 120, 24, function()
         if resetAllConfirmText then
             resetAllConfirmText:Show()
         end
@@ -1135,14 +1157,14 @@ local function CreateSettingsPage(parent)
     end)
 
     resetAllConfirmText = page:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-    resetAllConfirmText:SetPoint("TOPLEFT", page, "TOPLEFT", 0, -296)
+    resetAllConfirmText:SetPoint("TOPLEFT", page, "TOPLEFT", 0, -320)
     resetAllConfirmText:SetWidth(410)
     resetAllConfirmText:SetJustifyH("LEFT")
     resetAllConfirmText:SetText("WARNING: This permanently deletes ALL MicroGames SavedVariables data, including history, active session, roster, rewards, settings, and round data. Are you sure?")
     resetAllConfirmText:SetTextColor(1, 0.12, 0.12)
     resetAllConfirmText:Hide()
 
-    resetAllConfirmButton = CreateButton(page, "YES, DELETE ALL DATA", 0, -348, 190, 26, function()
+    resetAllConfirmButton = CreateButton(page, "YES, DELETE ALL DATA", 0, -372, 190, 26, function()
         API.ResetAllData()
         rosterPage = 1
         rewardButtonPage = 1

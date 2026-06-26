@@ -17,6 +17,8 @@ Rounds do not advance while the addon is loading.
 - During `ROUND 1`, there is no previous completed round to show.
 - The addon announces the round in raid chat as `ROUND X`.
 - After a short delay, the addon rolls from 1 to the number of players recorded by `StartRaidNumbering()`.
+- If `Roll Countdown Sound` is enabled, `RAID_WARNING` countdown messages are sent during the configured roll delay so raid members receive the normal raid warning alert.
+- The game master may need raid leader or assistant permissions for raid warning countdown messages.
 - The delayed roll captures the recorded range at button press time.
 - The roll range uses the recorded snapshot count, not the current live raid size.
 - Example: if `StartRaidNumbering()` recorded 37 players, `RoundRoll()` rolls 1-37.
@@ -31,6 +33,7 @@ Rounds do not advance while the addon is loading.
 - Reward history entries are only recorded when `addon.API.SendRewardYell(index)` is called by an explicit reward button action.
 - Reward templates are persisted in `MicroGamesDB.rewardTemplates`.
 - Round roll delay is persisted in `MicroGamesDB.roundRollDelay`.
+- Roll countdown sound is persisted in `MicroGamesDB.rollCountdownSoundEnabled`.
 - Resetting raid numbering also resets the round counter.
 
 ## API
@@ -50,6 +53,7 @@ local rewardTemplates = addon.API.GetRewardTemplates()
 local rewardYell = addon.API.BuildRewardYellMessage("10 GOLD!")
 
 addon.API.SetRoundRollDelay(2)
+addon.API.SetRollCountdownSoundEnabled(true)
 addon.API.ResetRounds()
 addon.API.AddRewardTemplate("20 GOLD!")
 addon.API.RemoveRewardTemplate(1)

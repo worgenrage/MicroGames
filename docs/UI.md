@@ -14,6 +14,7 @@ When the trade window closes, MicroGames expands again only if the trade opening
 - Rewards: Edits reward yell templates and provides a secondary reward view.
 - History: Shows completed sessions, session details, round results, winners, and rewards.
 - Settings: Edits the whisper text and round roll delay.
+- Settings also controls roll countdown raid warning alerts.
 
 ## UX Rules
 
@@ -42,6 +43,7 @@ When the trade window closes, MicroGames expands again only if the trade opening
 - Reward yell templates are stored in `MicroGamesDB.rewardTemplates`.
 - Number whisper text is stored in `MicroGamesDB.numberWhisperText`.
 - Round roll delay is stored in `MicroGamesDB.roundRollDelay`.
+- Roll countdown sound is stored in `MicroGamesDB.rollCountdownSoundEnabled`.
 - Hiding or closing the UI should preserve all process state.
 - Collapsing and expanding the UI should preserve all process state and the selected tab.
 
@@ -85,4 +87,5 @@ When the trade window closes, MicroGames expands again only if the trade opening
 - The whisper text input calls `addon.API.SetNumberWhisperText(text)`.
 - The whisper preview uses `addon.API.BuildNumberWhisperMessage(12)`.
 - The delay input calls `addon.API.SetRoundRollDelay(seconds)`.
-- Whisper text, round delay, and added reward templates persist through WoW SavedVariables.
+- The `Roll Countdown Sound` checkbox calls `addon.API.SetRollCountdownSoundEnabled(enabled)`.
+- Whisper text, round delay, roll countdown sound, and added reward templates persist through WoW SavedVariables.

@@ -35,6 +35,10 @@ local function EnsureSettings()
         MicroGamesDB.roundRollDelay = 2
     end
 
+    if type(MicroGamesDB.rollCountdownSoundEnabled) ~= "boolean" then
+        MicroGamesDB.rollCountdownSoundEnabled = false
+    end
+
     return MicroGamesDB
 end
 
@@ -246,12 +250,32 @@ local function SendRaidMessage(message)
     C_ChatInfo.SendChatMessage(message, "RAID")
 end
 
+local function SendRaidWarningMessage(message)
+    C_ChatInfo.SendChatMessage(message, "RAID_WARNING")
+end
+
 local function SendSayMessage(message)
     C_ChatInfo.SendChatMessage(message, "SAY")
 end
 
 local function SendYellMessage(message)
     C_ChatInfo.SendChatMessage(message, "YELL")
+end
+
+local function ScheduleRollCountdown(roundNumber, rollMax, delay)
+    local maxCountdown = math.min(3, math.floor(delay or 0))
+
+    if not API.GetRollCountdownSoundEnabled() or maxCountdown <= 0 then
+        return
+    end
+
+    for countdown = maxCountdown, 1, -1 do
+        C_Timer.After(delay - countdown, function()
+            if pendingRollRound == roundNumber and pendingRollMax == rollMax then
+                SendRaidWarningMessage("Rolling in " .. tostring(countdown) .. "...")
+            end
+        end)
+    end
 end
 
 local function ParseRollMessage(message)
@@ -523,6 +547,18 @@ end
 
 function API.GetRoundRollDelay()
     return EnsureSettings().roundRollDelay
+end
+
+function API.SetRollCountdownSoundEnabled(enabled)
+    local settings = EnsureSettings()
+
+    settings.rollCountdownSoundEnabled = enabled and true or false
+
+    return settings.rollCountdownSoundEnabled
+end
+
+function API.GetRollCountdownSoundEnabled()
+    return EnsureSettings().rollCountdownSoundEnabled
 end
 
 function API.BuildRoundMessage(roundNumber)
@@ -815,6 +851,7 @@ function API.RoundRoll()
     PersistActiveSessionState()
 
     SendRaidMessage(API.BuildRoundMessage(currentRound))
+    ScheduleRollCountdown(rollRound, rollMax, delay)
 
     C_Timer.After(delay, function()
         if pendingRollRound == rollRound and pendingRollMax == rollMax then
@@ -861,6 +898,7 @@ function API.RerollCurrentRound()
     pendingRollRound = rerollRound
     pendingRollMax = rollMax
     PersistActiveSessionState()
+    ScheduleRollCountdown(rerollRound, rollMax, delay)
 
     C_Timer.After(delay, function()
         if pendingRollRound == rerollRound and pendingRollMax == rollMax then

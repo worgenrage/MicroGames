@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.5
+
+- Added a persisted `Roll Countdown Sound` setting.
+- Sends guarded `RAID_WARNING` countdown messages before round rolls and rerolls when enabled.
+- Documented that raid warning countdowns may require raid leader or assistant permissions.
+
 ## 0.1.4
 
 - Hardened game state transitions so round rolls and rerolls require an active game session.
