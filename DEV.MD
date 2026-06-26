@@ -7,6 +7,7 @@ MicroGames is a WoW Classic Era / Hardcore 1.15.8 addon.
 - TOC interface: `11508`
 - Lua target: Blizzard WoW addon sandbox, Lua 5.1 subset
 - Language server flavor: `classic_era`
+- Supported client language: English only
 - Main files:
   - `API.lua`
   - `UI.lua`
@@ -251,7 +252,7 @@ Contains:
   - `Rounds 0`
 - Roster-local status line
 
-Roster setup controls are locked while a game session is active, except `Rounds 0`.
+Roster setup controls are locked while a game session is active or a roll is pending, except `Rounds 0`.
 
 ### Rewards
 
@@ -310,4 +311,3 @@ git diff --check
 ## Known Next Steps
 
 - Consider chat throttling for mass whisper sending.
-- Consider more robust localized roll-message parsing if non-English clients are targeted later.

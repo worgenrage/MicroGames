@@ -6,7 +6,7 @@ Rounds do not advance while the addon is loading.
 ## Rules
 
 - The first round starts from 1.
-- `addon.API.RoundRoll()` is the intended handler for a future `Round Roll` UX button.
+- `addon.API.RoundRoll()` is the handler for the `Round Roll` UX button.
 - Each `RoundRoll` call increments the current round by 1.
 - `addon.API.RerollCurrentRound()` rolls again for the current round without incrementing the round counter.
 - A new roll or reroll cannot start while a previous delayed roll is pending.
@@ -19,6 +19,7 @@ Rounds do not advance while the addon is loading.
 - Example: if `StartRaidNumbering()` recorded 37 players, `RoundRoll()` rolls 1-37.
 - After the roll result is detected, the addon stores the winner number and the matching recorded player name.
 - Roll detection should only accept the game master's own roll while a round roll is pending.
+- Roll detection only supports English client `CHAT_MSG_SYSTEM` roll messages.
 - Round announcements and roll results are recorded into the active game session when one exists.
 - The winner is resolved from the recorded raid numbering snapshot.
 - The winner message is `You win ROUND X come closer! :)`.
@@ -60,7 +61,7 @@ addon.API.SendRewardYell(1)
 
 `addon.API.BuildRollCommand()` returns a display preview such as `/roll 1-37`.
 The real roll uses `RandomRoll(1, recordedCount)` instead of executing a slash command string.
-The roll result is detected from `CHAT_MSG_SYSTEM` while a round roll is pending, and other players' rolls must be ignored.
+The roll result is detected from English client `CHAT_MSG_SYSTEM` roll messages while a round roll is pending, and other players' rolls must be ignored.
 Rerolls are stored as additional roll entries under the same round.
 Reward yell templates default to `10 GOLD!`, `20 GOLD!`, and `KROLL BLADE BOSS`.
 Custom reward templates are saved through WoW SavedVariables.

@@ -8,6 +8,7 @@ Closing the window only hides it. It must not reset numbering, rounds, whisper t
 - Control: Round roll, winner status, winner actions, reward yells, and compact setup controls.
 - Roster: Shows the recorded name and number snapshot from `StartRaidNumbering()` and roster setup controls.
 - Rewards: Edits reward yell templates and provides a secondary reward view.
+- History: Shows completed sessions, session details, round results, winners, and rewards.
 - Settings: Edits the whisper text and round roll delay.
 
 ## UX Rules
@@ -28,7 +29,7 @@ Closing the window only hides it. It must not reset numbering, rounds, whisper t
 - The Control tab should display a clear text status such as `EVENT STARTED - ROUND X - MEMBERS X`.
 - Roster setup controls such as start numbering, send numbers, stop numbering, reset, and reset rounds should live on the Roster tab.
 - Roster setup controls should write to a Roster-local status line, not the Control status line.
-- While a game session is active, roster setup controls must be disabled/greyed except `Rounds 0`.
+- While a game session is active or a roll is pending, roster setup controls must be disabled/greyed except `Rounds 0`.
 - Tabs must stay inside the main window bounds, not below or outside the frame.
 - The main window should use a high enough frame strata/level to avoid click-through into action bar addons.
 - Reward yell templates should be sent only by explicit button press.
@@ -71,7 +72,7 @@ Closing the window only hides it. It must not reset numbering, rounds, whisper t
 - The Roster tab reads `addon.API.GetRaidNumberEntries()`.
 - Each visible roster row can call `addon.API.SendNumberWhisperToName(name)` for a single recorded player.
 - Roster setup buttons call `StartRaidNumbering()`, `SendNumbers()`, `StopRaidNumbering()`, `ResetRaidNumbering()`, and `ResetRounds()`.
-- During an active game session, roster setup buttons must not modify the roster; `Rounds 0` remains available.
+- During an active game session or pending roll, roster setup buttons must not modify the roster; `Rounds 0` remains available.
 - Roster pagination is UI-only and must not change recorded data.
 
 ## Settings Bindings

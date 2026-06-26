@@ -3,6 +3,7 @@
 ## Target Runtime
 
 - Target client: WoW Classic Era / Hardcore 1.15.8.
+- Supported client language: English only.
 - TOC interface/API compatibility: `## Interface: 11508`.
 - `Interface: 11508` is the WoW client/interface API compatibility number, not a Lua version.
 - Lua target: Blizzard WoW addon sandbox, Lua 5.1 subset.
@@ -68,7 +69,7 @@
 ## Rounds Model
 
 - Do not advance rounds during addon load.
-- `RoundRoll()` is the explicit UX action for the future `Round Roll` button.
+- `RoundRoll()` is the explicit UX action for the `Round Roll` button.
 - Each `RoundRoll()` call increments the round counter by 1.
 - `RerollCurrentRound()` must roll again for the current round without incrementing the round counter.
 - Rerolls should be recorded under the same round in session data.
@@ -79,6 +80,7 @@
 - The roll range must use the `StartRaidNumbering()` snapshot count, not the current live raid size.
 - Use `RandomRoll(1, recordedCount)` for the actual roll; `BuildRollCommand()` is only a display preview.
 - Detect the pending roll result from `CHAT_MSG_SYSTEM`, accept only the game master's own roll, and resolve the winner against the recorded snapshot.
+- Roll result parsing only needs to support English client `CHAT_MSG_SYSTEM` roll messages.
 - The UI should prominently show the winner number and matching player name after a roll.
 - Winner display should be visually separated from normal status text with a highlighted panel/color.
 - Winner buttons should send `You win ROUND X come closer! :)` through say or whisper as separate explicit actions.
@@ -98,7 +100,7 @@
 - Keep visible UI text in English.
 - The main UI must be movable.
 - Closing the UI must only hide it and must not reset numbering, rounds, whisper text, or game state.
-- Use tabs for separate concerns such as Control, Roster, and Settings.
+- Use tabs for separate concerns such as Control, Roster, Rewards, History, and Settings.
 - Loading the addon may create UI and register slash commands, but must not count raid members, send whispers, or advance rounds.
 - Keep UI behavior documented in `docs/UI.md`.
 
@@ -112,6 +114,6 @@
 - UI buttons should visually reflect session state: START disabled while active, STOP disabled while inactive.
 - UI should show a clear state line such as `EVENT STARTED - ROUND X - MEMBERS X`.
 - Roster setup controls must use a Roster-local status line.
-- Roster setup controls must be locked while a game session is active, except `Rounds 0`.
+- Roster setup controls must be locked while a game session is active or a roll is pending, except `Rounds 0`.
 - Active session state must survive `/reload`, window close/open, and addon UI recreation.
 - Keep session persistence documented in `docs/Sessions.md`.
