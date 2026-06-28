@@ -24,8 +24,10 @@ local eventFrame = CreateFrame("Frame")
 local ADDON_MESSAGE_PREFIX = "MicroGames"
 local MONITORING_LOG_LIMIT = 8
 local MONITORING_LIVE_INTERVAL = 1
+local MONITORING_REWARD_LIMIT = 6
 local monitoringLog = {}
 local monitoringLastSnapshot = nil
+local monitoringObservedSender = nil
 local monitoringBroadcastEnabled = false
 local monitoringBroadcastTicker = nil
 local monitoringPrefixRegistered = false
@@ -87,9 +89,45 @@ end
 local function SanitizeMonitoringValue(value)
     local text = tostring(value or "")
 
-    text = string.gsub(text, "[|\n\r]", " ")
+    text = string.gsub(text, "[|~\n\r]", " ")
 
     return text
+end
+
+local function BuildMonitoringRewardText()
+    local rewards = EnsureRewardTemplates()
+    local rewardText = {}
+    local limit = math.min(#rewards, MONITORING_REWARD_LIMIT)
+
+    for index = 1, limit do
+        rewardText[#rewardText + 1] = SanitizeMonitoringValue(rewards[index])
+    end
+
+    return tostring(#rewards), table.concat(rewardText, "~")
+end
+
+local function SplitMonitoringRewards(text)
+    local rewards = {}
+    local startIndex = 1
+    local separatorIndex
+
+    if type(text) ~= "string" or text == "" then
+        return rewards
+    end
+
+    while true do
+        separatorIndex = string.find(text, "~", startIndex, true)
+
+        if not separatorIndex then
+            rewards[#rewards + 1] = string.sub(text, startIndex)
+            break
+        end
+
+        rewards[#rewards + 1] = string.sub(text, startIndex, separatorIndex - 1)
+        startIndex = separatorIndex + 1
+    end
+
+    return rewards
 end
 
 local function AddMonitoringLogEntry(entry)
@@ -127,6 +165,7 @@ end
 local function BuildMonitoringSnapshot(eventName)
     local session = EnsureSettings().activeSession
     local sessionActive = type(session) == "table" and session.status == "active"
+    local rewardCount, rewardText = BuildMonitoringRewardText()
 
     return {
         event = SanitizeMonitoringValue(eventName or "STATE"),
@@ -137,7 +176,9 @@ local function BuildMonitoringSnapshot(eventName)
         players = tostring(assignedCount or 0),
         pending = pendingRollRound and tostring(pendingRollRound) or "-",
         winnerNumber = lastWinnerNumber and tostring(lastWinnerNumber) or "-",
-        winnerName = SanitizeMonitoringValue(lastWinnerName or "-")
+        winnerName = SanitizeMonitoringValue(lastWinnerName or "-"),
+        rewardCount = rewardCount,
+        rewards = rewardText
     }
 end
 
@@ -152,7 +193,9 @@ local function EncodeMonitoringSnapshot(snapshot)
         snapshot.players,
         snapshot.pending,
         snapshot.winnerNumber,
-        snapshot.winnerName
+        snapshot.winnerName,
+        snapshot.rewardCount,
+        snapshot.rewards
     }, "|")
 end
 
@@ -172,7 +215,9 @@ local function DecodeMonitoringSnapshot(payload)
         players = fields[7] or "-",
         pending = fields[8] or "-",
         winnerNumber = fields[9] or "-",
-        winnerName = fields[10] or "-"
+        winnerName = fields[10] or "-",
+        rewardCount = fields[11] or "0",
+        rewards = SplitMonitoringRewards(fields[12])
     }
 end
 
@@ -190,14 +235,22 @@ end
 
 local function HandleMonitoringMessage(payload, sender)
     local snapshot = DecodeMonitoringSnapshot(payload)
+    local sanitizedSender
 
     if not snapshot then
         return
     end
 
+    sanitizedSender = SanitizeMonitoringValue(sender or snapshot.sender or "-")
+
+    if monitoringObservedSender and monitoringObservedSender ~= sanitizedSender then
+        return
+    end
+
     snapshot.receivedAt = GetTimestamp()
-    snapshot.sender = SanitizeMonitoringValue(sender or snapshot.sender or "-")
+    snapshot.sender = sanitizedSender
     monitoringLastSnapshot = snapshot
+    monitoringObservedSender = sanitizedSender
 
     AddMonitoringLogEntry({
         receivedAt = snapshot.receivedAt,
@@ -779,6 +832,10 @@ end
 function API.StartMonitoringBroadcast()
     local ok, result
 
+    if not API.HasActiveGameSession() then
+        return false, "NO_ACTIVE_SESSION"
+    end
+
     if not GetMonitoringBroadcastChannel() then
         return false, "NO_GROUP"
     end
@@ -811,6 +868,7 @@ end
 function API.ClearMonitoringLog()
     monitoringLog = {}
     monitoringLastSnapshot = nil
+    monitoringObservedSender = nil
 end
 
 function API.GetMonitoringView()
@@ -827,6 +885,8 @@ function API.GetMonitoringView()
         channel = channel or "-",
         liveEnabled = monitoringBroadcastEnabled,
         liveInterval = MONITORING_LIVE_INTERVAL,
+        observedSender = monitoringObservedSender,
+        gameActive = API.HasActiveGameSession(),
         localState = BuildMonitoringSnapshot("LOCAL")
     }
 end
@@ -930,6 +990,7 @@ function API.AddRewardTemplate(text)
     end
 
     savedTemplates[#savedTemplates + 1] = text
+    BroadcastMonitoringState("REWARD_TEMPLATE_ADDED")
 
     return true
 end
@@ -942,6 +1003,7 @@ function API.RemoveRewardTemplate(index)
     end
 
     table.remove(savedTemplates, index)
+    BroadcastMonitoringState("REWARD_TEMPLATE_REMOVED")
 
     return true
 end
@@ -1042,6 +1104,7 @@ function API.StopGameSession()
     session.finalWinnerNumber = lastWinnerNumber
     session.finalWinnerName = lastWinnerName
     BroadcastMonitoringState("GAME_STOPPED")
+    API.StopMonitoringBroadcast()
 
     history = EnsureHistory()
     history[#history + 1] = session

@@ -179,11 +179,17 @@ Rules:
 
 - Broadcasts go to `RAID` when the player is in a raid, otherwise `PARTY` when grouped.
 - No broadcast is sent while solo.
+- The user who presses `Start GM Live` is the GM broadcaster.
+- `Start GM Live` requires an active game session.
+- Stopping the game session stops GM live monitoring.
+- Clients that do not start GM live stay observers.
+- Observers lock to the first observed GM sender and ignore competing Monitoring senders until `Clear GM` is pressed.
 - Live monitoring sends compact runtime state updates every 1 second while enabled.
 - Broadcast payloads are compact runtime state frames for debugging another user's addon state.
-- Monitoring state updates include source, event, session state, round, recorded player count, pending roll, and winner.
+- Monitoring state updates include source, event, session state, round, recorded player count, pending roll, winner, and visible reward templates.
 - The Monitoring tab is read-only for remote state and must not modify gameplay state.
 - Key gameplay state changes also broadcast immediate updates while live monitoring is enabled.
+- Reward template changes broadcast immediate updates while live monitoring is enabled.
 
 ## Winner Actions
 
@@ -333,9 +339,10 @@ Contains:
 
 - live remote state
 - local debug state and selected broadcast channel
-- `Start Live` / `Stop Live`
+- remote reward templates
+- `Start GM Live` / `Stop GM Live`
 - `Send Update`
-- `Clear Log`
+- `Clear GM`
 - received monitoring event log
 
 The tab uses addon messages only through `C_ChatInfo.SendAddonMessage`. It does not send visible raid chat, whispers, yells, rolls, or rewards.

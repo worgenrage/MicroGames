@@ -48,6 +48,10 @@ When the trade window closes, MicroGames expands again only if the trade opening
 - Hiding or closing the UI should preserve all process state.
 - Collapsing and expanding the UI should preserve all process state and the selected tab.
 - Monitoring must be read-only for remote state and must not change gameplay state.
+- Pressing `Start GM Live` makes the local user the Monitoring broadcaster; otherwise the local user is an observer.
+- `Start GM Live` is disabled until a game session is active.
+- Stopping the game session stops GM live monitoring.
+- Observers lock to the first observed GM sender until `Clear GM` is pressed.
 
 ## Control Bindings
 
@@ -96,9 +100,9 @@ When the trade window closes, MicroGames expands again only if the trade opening
 ## Monitoring Bindings
 
 - The Monitoring tab reads `addon.API.GetMonitoringView()`.
-- `Start Live` calls `addon.API.StartMonitoringBroadcast()` and sends compact addon-message state updates every 1 second to raid or party.
-- `Stop Live` calls `addon.API.StopMonitoringBroadcast()`.
+- `Start GM Live` calls `addon.API.StartMonitoringBroadcast()` and sends compact addon-message state updates every 1 second to raid or party.
+- `Stop GM Live` calls `addon.API.StopMonitoringBroadcast()`.
 - `Send Update` calls `addon.API.BroadcastMonitoringState()` and sends one compact addon-message state update to raid or party.
-- `Clear Log` calls `addon.API.ClearMonitoringLog()`.
-- Received monitoring updates show source, event, session state, round, recorded players, pending roll, and winner.
+- `Clear GM` calls `addon.API.ClearMonitoringLog()` and clears the observed GM lock plus the received log.
+- Received monitoring updates show source, event, session state, round, recorded players, pending roll, winner, and visible reward templates.
 - Monitoring data is runtime-only and is not stored in SavedVariables.

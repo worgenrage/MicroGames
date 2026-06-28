@@ -483,6 +483,7 @@ end
 
 local function BuildMonitoringSnapshotText(snapshot)
     local lines = {}
+    local rewardLines = {}
 
     if type(snapshot) ~= "table" then
         return "No live remote monitoring data received."
@@ -495,6 +496,16 @@ local function BuildMonitoringSnapshotText(snapshot)
     lines[#lines + 1] = "Winner: #" .. tostring(snapshot.winnerNumber or "-") .. " - " .. tostring(snapshot.winnerName or "-")
     lines[#lines + 1] = "Received: " .. tostring(snapshot.receivedAt or "-")
 
+    if type(snapshot.rewards) == "table" and #snapshot.rewards > 0 then
+        for index = 1, #snapshot.rewards do
+            rewardLines[#rewardLines + 1] = tostring(index) .. ". " .. tostring(snapshot.rewards[index])
+        end
+
+        lines[#lines + 1] = "Rewards (" .. tostring(snapshot.rewardCount or #snapshot.rewards) .. "): " .. table.concat(rewardLines, " | ")
+    else
+        lines[#lines + 1] = "Rewards: -"
+    end
+
     return table.concat(lines, "\n")
 end
 
@@ -502,6 +513,9 @@ local function BuildMonitoringLocalText(view)
     local localState = view.localState or {}
 
     return "Broadcast channel: " .. tostring(view.channel or "-")
+        .. "\nLocal role: " .. (view.liveEnabled and "GM broadcaster" or "Observer")
+        .. " | Observed GM: " .. tostring(view.observedSender or "-")
+        .. "\nGame session: " .. (view.gameActive and "STARTED" or "STOPPED")
         .. "\nLive broadcast: " .. (view.liveEnabled and "ON" or "OFF")
         .. " | Interval: " .. tostring(view.liveInterval or "-") .. "s"
         .. "\nLocal session: " .. tostring(localState.session or "-")
@@ -535,7 +549,8 @@ local function RefreshMonitoring()
     end
 
     if monitoringLiveButton then
-        monitoringLiveButton:SetText(view.liveEnabled and "Stop Live" or "Start Live")
+        monitoringLiveButton:SetText(view.liveEnabled and "Stop GM Live" or "Start GM Live")
+        SetButtonEnabled(monitoringLiveButton, view.liveEnabled or view.gameActive)
     end
 
     for rowIndex = 1, MONITORING_ROWS do
@@ -1186,17 +1201,17 @@ local function CreateMonitoringPage(parent)
     monitoringSummaryText:SetJustifyH("LEFT")
     monitoringSummaryText:SetJustifyV("TOP")
 
-    CreateSeparator(page, -154, 500)
+    CreateSeparator(page, -174, 500)
 
-    CreateLabel(page, "Local debug state", 0, -164)
+    CreateLabel(page, "Local debug state", 0, -184)
 
     monitoringLocalText = page:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-    monitoringLocalText:SetPoint("TOPLEFT", page, "TOPLEFT", 0, -188)
+    monitoringLocalText:SetPoint("TOPLEFT", page, "TOPLEFT", 0, -208)
     monitoringLocalText:SetWidth(500)
     monitoringLocalText:SetJustifyH("LEFT")
     monitoringLocalText:SetJustifyV("TOP")
 
-    monitoringLiveButton = CreateButton(page, "Start Live", 0, -260, 104, 24, function()
+    monitoringLiveButton = CreateButton(page, "Start GM Live", 0, -300, 122, 24, function()
         local ok
         local result
 
@@ -1208,6 +1223,8 @@ local function CreateMonitoringPage(parent)
 
         if ok then
             monitoringStatusText:SetText("Monitoring " .. tostring(result) .. ".")
+        elseif result == "NO_ACTIVE_SESSION" then
+            monitoringStatusText:SetText("Start the game before starting GM live.")
         elseif result == "NO_GROUP" then
             monitoringStatusText:SetText("Join a party or raid before starting live monitoring.")
         else
@@ -1217,7 +1234,7 @@ local function CreateMonitoringPage(parent)
         RefreshAll()
     end)
 
-    CreateButton(page, "Send Update", 116, -260, 104, 24, function()
+    CreateButton(page, "Send Update", 134, -300, 104, 24, function()
         local ok, result = API.BroadcastMonitoringState()
 
         if ok then
@@ -1231,21 +1248,21 @@ local function CreateMonitoringPage(parent)
         RefreshAll()
     end)
 
-    CreateButton(page, "Clear Log", 232, -260, 92, 24, function()
+    CreateButton(page, "Clear GM", 250, -300, 82, 24, function()
         API.ClearMonitoringLog()
-        monitoringStatusText:SetText("Monitoring log cleared.")
+        monitoringStatusText:SetText("Observed GM and log cleared.")
         RefreshAll()
     end)
 
-    monitoringStatusText = CreateValue(page, 340, -264, 160)
+    monitoringStatusText = CreateValue(page, 344, -304, 156)
 
-    CreateSeparator(page, -304, 500)
+    CreateSeparator(page, -344, 500)
 
-    CreateLabel(page, "Received events", 0, -314)
+    CreateLabel(page, "Received events", 0, -354)
 
     for i = 1, MONITORING_ROWS do
         local row = CreateFrame("Frame", nil, page)
-        row:SetPoint("TOPLEFT", page, "TOPLEFT", 0, -340 - ((i - 1) * 20))
+        row:SetPoint("TOPLEFT", page, "TOPLEFT", 0, -380 - ((i - 1) * 20))
         row:SetSize(500, 18)
 
         row.text = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")

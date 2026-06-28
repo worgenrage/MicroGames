@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.7
+
+- Added read-only reward template sync to live Monitoring addon-message updates.
+- Sends immediate Monitoring updates when reward templates are added or removed while live monitoring is enabled.
+- Clarified Monitoring roles: `Start GM Live` makes the local user the broadcaster, and observers lock to the first observed GM until cleared.
+- Restricts `Start GM Live` to active game sessions and stops live monitoring when the game session stops.
+
 ## 0.1.6
 
 - Added a Settings `Test Sound` button for roll countdown raid warning alerts.
