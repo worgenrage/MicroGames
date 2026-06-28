@@ -21,6 +21,14 @@ local defaultRewardTemplates = {
     "KROLL BLADE BOSS"
 }
 local eventFrame = CreateFrame("Frame")
+local ADDON_MESSAGE_PREFIX = "MicroGames"
+local MONITORING_LOG_LIMIT = 8
+local MONITORING_LIVE_INTERVAL = 1
+local monitoringLog = {}
+local monitoringLastSnapshot = nil
+local monitoringBroadcastEnabled = false
+local monitoringBroadcastTicker = nil
+local monitoringPrefixRegistered = false
 
 local function EnsureSettings()
     if type(MicroGamesDB) ~= "table" then
@@ -74,6 +82,189 @@ end
 
 local function GetTimestamp()
     return date("%Y-%m-%d %H:%M:%S")
+end
+
+local function SanitizeMonitoringValue(value)
+    local text = tostring(value or "")
+
+    text = string.gsub(text, "[|\n\r]", " ")
+
+    return text
+end
+
+local function AddMonitoringLogEntry(entry)
+    table.insert(monitoringLog, 1, entry)
+
+    while #monitoringLog > MONITORING_LOG_LIMIT do
+        table.remove(monitoringLog)
+    end
+end
+
+local function SplitMonitoringPayload(payload)
+    local fields = {}
+    local startIndex = 1
+    local separatorIndex
+
+    if type(payload) ~= "string" then
+        return fields
+    end
+
+    while true do
+        separatorIndex = string.find(payload, "|", startIndex, true)
+
+        if not separatorIndex then
+            fields[#fields + 1] = string.sub(payload, startIndex)
+            break
+        end
+
+        fields[#fields + 1] = string.sub(payload, startIndex, separatorIndex - 1)
+        startIndex = separatorIndex + 1
+    end
+
+    return fields
+end
+
+local function BuildMonitoringSnapshot(eventName)
+    local session = EnsureSettings().activeSession
+    local sessionActive = type(session) == "table" and session.status == "active"
+
+    return {
+        event = SanitizeMonitoringValue(eventName or "STATE"),
+        sentAt = GetTimestamp(),
+        sender = SanitizeMonitoringValue(UnitName("player") or "-"),
+        session = sessionActive and "active" or "inactive",
+        round = tostring(currentRound or 0),
+        players = tostring(assignedCount or 0),
+        pending = pendingRollRound and tostring(pendingRollRound) or "-",
+        winnerNumber = lastWinnerNumber and tostring(lastWinnerNumber) or "-",
+        winnerName = SanitizeMonitoringValue(lastWinnerName or "-")
+    }
+end
+
+local function EncodeMonitoringSnapshot(snapshot)
+    return table.concat({
+        "v1",
+        snapshot.event,
+        snapshot.sentAt,
+        snapshot.sender,
+        snapshot.session,
+        snapshot.round,
+        snapshot.players,
+        snapshot.pending,
+        snapshot.winnerNumber,
+        snapshot.winnerName
+    }, "|")
+end
+
+local function DecodeMonitoringSnapshot(payload)
+    local fields = SplitMonitoringPayload(payload)
+
+    if fields[1] ~= "v1" then
+        return nil
+    end
+
+    return {
+        event = fields[2] or "-",
+        sentAt = fields[3] or "-",
+        sender = fields[4] or "-",
+        session = fields[5] or "-",
+        round = fields[6] or "-",
+        players = fields[7] or "-",
+        pending = fields[8] or "-",
+        winnerNumber = fields[9] or "-",
+        winnerName = fields[10] or "-"
+    }
+end
+
+local function GetMonitoringBroadcastChannel()
+    if IsInRaid and IsInRaid() then
+        return "RAID"
+    end
+
+    if IsInGroup and IsInGroup() then
+        return "PARTY"
+    end
+
+    return nil
+end
+
+local function HandleMonitoringMessage(payload, sender)
+    local snapshot = DecodeMonitoringSnapshot(payload)
+
+    if not snapshot then
+        return
+    end
+
+    snapshot.receivedAt = GetTimestamp()
+    snapshot.sender = SanitizeMonitoringValue(sender or snapshot.sender or "-")
+    monitoringLastSnapshot = snapshot
+
+    AddMonitoringLogEntry({
+        receivedAt = snapshot.receivedAt,
+        sender = snapshot.sender,
+        event = snapshot.event,
+        round = snapshot.round,
+        players = snapshot.players,
+        pending = snapshot.pending,
+        winnerName = snapshot.winnerName
+    })
+
+    if addon.UI and addon.UI.Refresh then
+        addon.UI.Refresh()
+    end
+end
+
+local function SendMonitoringState(eventName)
+    local channel = GetMonitoringBroadcastChannel()
+    local snapshot
+    local result
+
+    if not channel then
+        return false, "NO_GROUP"
+    end
+
+    if not monitoringPrefixRegistered then
+        return false, "PREFIX_NOT_REGISTERED"
+    end
+
+    snapshot = BuildMonitoringSnapshot(eventName)
+    result = C_ChatInfo.SendAddonMessage(ADDON_MESSAGE_PREFIX, EncodeMonitoringSnapshot(snapshot), channel)
+
+    if result == false then
+        return false, "SEND_FAILED"
+    end
+
+    return true, channel
+end
+
+local function BroadcastMonitoringState(eventName)
+    if not monitoringBroadcastEnabled then
+        return false, "LIVE_DISABLED"
+    end
+
+    return SendMonitoringState(eventName)
+end
+
+local function StopMonitoringTicker()
+    if monitoringBroadcastTicker and monitoringBroadcastTicker.Cancel then
+        monitoringBroadcastTicker:Cancel()
+    end
+
+    monitoringBroadcastTicker = nil
+end
+
+local function StartMonitoringTicker()
+    StopMonitoringTicker()
+
+    if not C_Timer or not C_Timer.NewTicker then
+        return false, "TIMER_UNAVAILABLE"
+    end
+
+    monitoringBroadcastTicker = C_Timer.NewTicker(MONITORING_LIVE_INTERVAL, function()
+        BroadcastMonitoringState("LIVE")
+    end)
+
+    return true, "LIVE_STARTED"
 end
 
 local function GetRosterSnapshot()
@@ -319,6 +510,7 @@ local function HandleSystemMessage(message)
     pendingRollRound = nil
     pendingRollMax = nil
     PersistActiveSessionState()
+    BroadcastMonitoringState("ROLL_RESULT")
 
     if addon.UI and addon.UI.Refresh then
         addon.UI.Refresh()
@@ -326,9 +518,15 @@ local function HandleSystemMessage(message)
 end
 
 eventFrame:RegisterEvent("CHAT_MSG_SYSTEM")
-eventFrame:SetScript("OnEvent", function(self, event, message)
+eventFrame:RegisterEvent("CHAT_MSG_ADDON")
+if C_ChatInfo and C_ChatInfo.RegisterAddonMessagePrefix then
+    monitoringPrefixRegistered = C_ChatInfo.RegisterAddonMessagePrefix(ADDON_MESSAGE_PREFIX) ~= false
+end
+eventFrame:SetScript("OnEvent", function(self, event, message, payload, channel, sender)
     if event == "CHAT_MSG_SYSTEM" and message then
         HandleSystemMessage(message)
+    elseif event == "CHAT_MSG_ADDON" and message == ADDON_MESSAGE_PREFIX then
+        HandleMonitoringMessage(payload, sender)
     end
 end)
 
@@ -353,6 +551,7 @@ function API.StartRaidNumbering()
 
     assignmentActive = assignedCount > 0
     PersistActiveSessionState()
+    BroadcastMonitoringState("ROSTER_RECORDED")
 
     return assignedCount
 end
@@ -373,6 +572,7 @@ function API.ResetRaidNumbering()
     lastWinnerNumber = nil
     lastWinnerName = nil
     PersistActiveSessionState()
+    BroadcastMonitoringState("ROSTER_CLEARED")
 end
 
 function API.ResetAllData()
@@ -390,6 +590,7 @@ function API.ResetAllData()
     EnsureSettings()
     EnsureRewardTemplates()
     EnsureHistory()
+    BroadcastMonitoringState("RESET_ALL")
 
     return true
 end
@@ -561,6 +762,75 @@ function API.GetRollCountdownSoundEnabled()
     return EnsureSettings().rollCountdownSoundEnabled
 end
 
+function API.TestRollCountdownSound()
+    if not API.GetRollCountdownSoundEnabled() then
+        return false, "ROLL_COUNTDOWN_SOUND_DISABLED"
+    end
+
+    SendRaidWarningMessage("MicroGames roll countdown sound test.")
+
+    return true, "ROLL_COUNTDOWN_SOUND_TEST_SENT"
+end
+
+function API.BroadcastMonitoringState()
+    return SendMonitoringState("MANUAL")
+end
+
+function API.StartMonitoringBroadcast()
+    local ok, result
+
+    if not GetMonitoringBroadcastChannel() then
+        return false, "NO_GROUP"
+    end
+
+    monitoringBroadcastEnabled = true
+    ok, result = StartMonitoringTicker()
+
+    if not ok then
+        monitoringBroadcastEnabled = false
+        return false, result
+    end
+
+    SendMonitoringState("LIVE_START")
+
+    return true, "LIVE_STARTED"
+end
+
+function API.StopMonitoringBroadcast()
+    SendMonitoringState("LIVE_STOP")
+    monitoringBroadcastEnabled = false
+    StopMonitoringTicker()
+
+    return true, "LIVE_STOPPED"
+end
+
+function API.GetMonitoringBroadcastEnabled()
+    return monitoringBroadcastEnabled
+end
+
+function API.ClearMonitoringLog()
+    monitoringLog = {}
+    monitoringLastSnapshot = nil
+end
+
+function API.GetMonitoringView()
+    local logCopy = {}
+    local channel = GetMonitoringBroadcastChannel()
+
+    for index = 1, #monitoringLog do
+        logCopy[index] = monitoringLog[index]
+    end
+
+    return {
+        lastSnapshot = monitoringLastSnapshot,
+        log = logCopy,
+        channel = channel or "-",
+        liveEnabled = monitoringBroadcastEnabled,
+        liveInterval = MONITORING_LIVE_INTERVAL,
+        localState = BuildMonitoringSnapshot("LOCAL")
+    }
+end
+
 function API.BuildRoundMessage(roundNumber)
     if not roundNumber then
         return nil
@@ -710,6 +980,7 @@ function API.SendRewardYell(index)
     SendYellMessage(message)
     RecordSessionReward(rewardText, message)
     PersistActiveSessionState()
+    BroadcastMonitoringState("REWARD_SENT")
 
     return true
 end
@@ -743,6 +1014,7 @@ function API.StartGameSession()
 
     settings.activeSession = session
     PersistActiveSessionState()
+    BroadcastMonitoringState("GAME_STARTED")
 
     return true, "GAME_STARTED"
 end
@@ -769,6 +1041,7 @@ function API.StopGameSession()
     session.finalWinnerRound = lastWinnerRound
     session.finalWinnerNumber = lastWinnerNumber
     session.finalWinnerName = lastWinnerName
+    BroadcastMonitoringState("GAME_STOPPED")
 
     history = EnsureHistory()
     history[#history + 1] = session
@@ -852,6 +1125,7 @@ function API.RoundRoll()
 
     SendRaidMessage(API.BuildRoundMessage(currentRound))
     ScheduleRollCountdown(rollRound, rollMax, delay)
+    BroadcastMonitoringState("ROUND_ROLL")
 
     C_Timer.After(delay, function()
         if pendingRollRound == rollRound and pendingRollMax == rollMax then
@@ -864,6 +1138,7 @@ function API.RoundRoll()
             pendingRollRound = nil
             pendingRollMax = nil
             PersistActiveSessionState()
+            BroadcastMonitoringState("ROLL_TIMEOUT")
 
             if addon.UI and addon.UI.Refresh then
                 addon.UI.Refresh()
@@ -899,6 +1174,7 @@ function API.RerollCurrentRound()
     pendingRollMax = rollMax
     PersistActiveSessionState()
     ScheduleRollCountdown(rerollRound, rollMax, delay)
+    BroadcastMonitoringState("REROLL")
 
     C_Timer.After(delay, function()
         if pendingRollRound == rerollRound and pendingRollMax == rollMax then
@@ -911,6 +1187,7 @@ function API.RerollCurrentRound()
             pendingRollRound = nil
             pendingRollMax = nil
             PersistActiveSessionState()
+            BroadcastMonitoringState("ROLL_TIMEOUT")
 
             if addon.UI and addon.UI.Refresh then
                 addon.UI.Refresh()

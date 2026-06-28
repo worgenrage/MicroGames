@@ -6,7 +6,7 @@ addon.UI = addon.UI or {}
 local API = addon.API
 local UI = addon.UI
 
-local FRAME_WIDTH = 460
+local FRAME_WIDTH = 540
 local FRAME_HEIGHT = 640
 local COLLAPSED_FRAME_WIDTH = 220
 local COLLAPSED_FRAME_HEIGHT = 72
@@ -15,6 +15,7 @@ local REWARD_BUTTONS_PER_PAGE = 6
 local REWARD_ROWS_PER_PAGE = 6
 local HISTORY_ROWS_PER_PAGE = 5
 local HISTORY_ROUND_ROWS_PER_PAGE = 6
+local MONITORING_ROWS = 8
 
 local frame
 local collapseButton
@@ -27,6 +28,7 @@ local rewardButtons = {}
 local rewardRows = {}
 local historyRows = {}
 local historyRoundRows = {}
+local monitoringRows = {}
 local rosterPage = 1
 local rewardButtonPage = 1
 local rewardSettingsPage = 1
@@ -60,6 +62,10 @@ local rewardSettingsPageText
 local historyPageText
 local historyDetailText
 local historyRoundPageText
+local monitoringSummaryText
+local monitoringLocalText
+local monitoringStatusText
+local monitoringLiveButton
 local rewardEditBox
 local resetAllConfirmText
 local resetAllConfirmButton
@@ -475,12 +481,85 @@ local function RefreshHistory()
     end
 end
 
+local function BuildMonitoringSnapshotText(snapshot)
+    local lines = {}
+
+    if type(snapshot) ~= "table" then
+        return "No live remote monitoring data received."
+    end
+
+    lines[#lines + 1] = "Source: " .. tostring(snapshot.sender or "-")
+    lines[#lines + 1] = "Event: " .. tostring(snapshot.event or "-") .. " at " .. tostring(snapshot.sentAt or "-")
+    lines[#lines + 1] = "Session: " .. tostring(snapshot.session or "-") .. " | Round: " .. tostring(snapshot.round or "-") .. " | Players: " .. tostring(snapshot.players or "-")
+    lines[#lines + 1] = "Pending roll: " .. tostring(snapshot.pending or "-")
+    lines[#lines + 1] = "Winner: #" .. tostring(snapshot.winnerNumber or "-") .. " - " .. tostring(snapshot.winnerName or "-")
+    lines[#lines + 1] = "Received: " .. tostring(snapshot.receivedAt or "-")
+
+    return table.concat(lines, "\n")
+end
+
+local function BuildMonitoringLocalText(view)
+    local localState = view.localState or {}
+
+    return "Broadcast channel: " .. tostring(view.channel or "-")
+        .. "\nLive broadcast: " .. (view.liveEnabled and "ON" or "OFF")
+        .. " | Interval: " .. tostring(view.liveInterval or "-") .. "s"
+        .. "\nLocal session: " .. tostring(localState.session or "-")
+        .. " | Round: " .. tostring(localState.round or "-")
+        .. " | Players: " .. tostring(localState.players or "-")
+        .. "\nLocal pending: " .. tostring(localState.pending or "-")
+        .. " | Winner: #" .. tostring(localState.winnerNumber or "-")
+        .. " - " .. tostring(localState.winnerName or "-")
+end
+
+local function BuildMonitoringLogText(entry)
+    return tostring(entry.receivedAt or "-")
+        .. " | " .. tostring(entry.sender or "-")
+        .. " | " .. tostring(entry.event or "-")
+        .. " | R" .. tostring(entry.round or "-")
+        .. " | P" .. tostring(entry.players or "-")
+        .. " | Pending " .. tostring(entry.pending or "-")
+        .. " | " .. tostring(entry.winnerName or "-")
+end
+
+local function RefreshMonitoring()
+    local view = API.GetMonitoringView()
+    local log = view.log or {}
+
+    if monitoringSummaryText then
+        monitoringSummaryText:SetText(BuildMonitoringSnapshotText(view.lastSnapshot))
+    end
+
+    if monitoringLocalText then
+        monitoringLocalText:SetText(BuildMonitoringLocalText(view))
+    end
+
+    if monitoringLiveButton then
+        monitoringLiveButton:SetText(view.liveEnabled and "Stop Live" or "Start Live")
+    end
+
+    for rowIndex = 1, MONITORING_ROWS do
+        local row = monitoringRows[rowIndex]
+        local entry = log[rowIndex]
+
+        if row then
+            if entry then
+                row.text:SetText(BuildMonitoringLogText(entry))
+                row:Show()
+            else
+                row:Hide()
+            end
+        end
+    end
+end
+
 local function RefreshAll()
     UpdateSummary()
     RefreshRoster()
     RefreshRewardButtons()
     RefreshRewardSettings()
     RefreshHistory()
+    RefreshMonitoring()
 
     if whisperEditBox then
         whisperEditBox:SetText(API.GetNumberWhisperText())
@@ -1094,6 +1173,92 @@ local function CreateHistoryPage(parent)
     return page
 end
 
+local function CreateMonitoringPage(parent)
+    local page = CreateFrame("Frame", nil, parent)
+    page:SetPoint("TOPLEFT", parent, "TOPLEFT", 20, -92)
+    page:SetPoint("BOTTOMRIGHT", parent, "BOTTOMRIGHT", -20, 44)
+
+    CreateLabel(page, "Live remote state", 0, 0)
+
+    monitoringSummaryText = page:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    monitoringSummaryText:SetPoint("TOPLEFT", page, "TOPLEFT", 0, -24)
+    monitoringSummaryText:SetWidth(500)
+    monitoringSummaryText:SetJustifyH("LEFT")
+    monitoringSummaryText:SetJustifyV("TOP")
+
+    CreateSeparator(page, -154, 500)
+
+    CreateLabel(page, "Local debug state", 0, -164)
+
+    monitoringLocalText = page:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    monitoringLocalText:SetPoint("TOPLEFT", page, "TOPLEFT", 0, -188)
+    monitoringLocalText:SetWidth(500)
+    monitoringLocalText:SetJustifyH("LEFT")
+    monitoringLocalText:SetJustifyV("TOP")
+
+    monitoringLiveButton = CreateButton(page, "Start Live", 0, -260, 104, 24, function()
+        local ok
+        local result
+
+        if API.GetMonitoringBroadcastEnabled() then
+            ok, result = API.StopMonitoringBroadcast()
+        else
+            ok, result = API.StartMonitoringBroadcast()
+        end
+
+        if ok then
+            monitoringStatusText:SetText("Monitoring " .. tostring(result) .. ".")
+        elseif result == "NO_GROUP" then
+            monitoringStatusText:SetText("Join a party or raid before starting live monitoring.")
+        else
+            monitoringStatusText:SetText("Monitoring failed: " .. tostring(result))
+        end
+
+        RefreshAll()
+    end)
+
+    CreateButton(page, "Send Update", 116, -260, 104, 24, function()
+        local ok, result = API.BroadcastMonitoringState()
+
+        if ok then
+            monitoringStatusText:SetText("Monitoring update sent on " .. tostring(result) .. ".")
+        elseif result == "NO_GROUP" then
+            monitoringStatusText:SetText("Join a party or raid before sending an update.")
+        else
+            monitoringStatusText:SetText("Monitoring update failed: " .. tostring(result))
+        end
+
+        RefreshAll()
+    end)
+
+    CreateButton(page, "Clear Log", 232, -260, 92, 24, function()
+        API.ClearMonitoringLog()
+        monitoringStatusText:SetText("Monitoring log cleared.")
+        RefreshAll()
+    end)
+
+    monitoringStatusText = CreateValue(page, 340, -264, 160)
+
+    CreateSeparator(page, -304, 500)
+
+    CreateLabel(page, "Received events", 0, -314)
+
+    for i = 1, MONITORING_ROWS do
+        local row = CreateFrame("Frame", nil, page)
+        row:SetPoint("TOPLEFT", page, "TOPLEFT", 0, -340 - ((i - 1) * 20))
+        row:SetSize(500, 18)
+
+        row.text = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        row.text:SetPoint("LEFT", row, "LEFT", 0, 0)
+        row.text:SetWidth(500)
+        row.text:SetJustifyH("LEFT")
+
+        monitoringRows[i] = row
+    end
+
+    return page
+end
+
 local function CreateSettingsPage(parent)
     local page = CreateFrame("Frame", nil, parent)
     page:SetPoint("TOPLEFT", parent, "TOPLEFT", 20, -92)
@@ -1138,6 +1303,18 @@ local function CreateSettingsPage(parent)
         API.SetRollCountdownSoundEnabled(self:GetChecked())
         SetStatus("Roll countdown sound " .. (self:GetChecked() and "enabled." or "disabled."))
         RefreshAll()
+    end)
+
+    CreateButton(page, "Test Sound", 220, -204, 104, 24, function()
+        local ok, result = API.TestRollCountdownSound()
+
+        if ok then
+            SetStatus("Roll countdown sound test sent.")
+        elseif result == "ROLL_COUNTDOWN_SOUND_DISABLED" then
+            SetStatus("Enable Roll Countdown Sound before testing.")
+        else
+            SetStatus("Roll countdown sound test failed.")
+        end
     end)
 
     CreateSeparator(page, -244)
@@ -1218,7 +1395,9 @@ function UI.Toggle()
 end
 
 function UI.Refresh()
-    RefreshAll()
+    if frame then
+        RefreshAll()
+    end
 end
 
 function UI.Create()
@@ -1257,6 +1436,7 @@ function UI.Create()
     pages.roster = CreateRosterPage(frame)
     pages.rewards = CreateRewardsPage(frame)
     pages.history = CreateHistoryPage(frame)
+    pages.monitoring = CreateMonitoringPage(frame)
     pages.settings = CreateSettingsPage(frame)
 
     tabs[1] = CreateFrame("Button", "MicroGamesTabControl", frame, "CharacterFrameTabButtonTemplate")
@@ -1291,15 +1471,23 @@ function UI.Create()
         ShowPage("history")
     end)
 
-    tabs[5] = CreateFrame("Button", "MicroGamesTabSettings", frame, "CharacterFrameTabButtonTemplate")
+    tabs[5] = CreateFrame("Button", "MicroGamesTabMonitoring", frame, "CharacterFrameTabButtonTemplate")
     tabs[5]:SetPoint("LEFT", tabs[4], "RIGHT", -14, 0)
-    tabs[5]:SetText("Settings")
-    tabs[5].pageName = "settings"
+    tabs[5]:SetText("Monitoring")
+    tabs[5].pageName = "monitoring"
     tabs[5]:SetScript("OnClick", function()
+        ShowPage("monitoring")
+    end)
+
+    tabs[6] = CreateFrame("Button", "MicroGamesTabSettings", frame, "CharacterFrameTabButtonTemplate")
+    tabs[6]:SetPoint("LEFT", tabs[5], "RIGHT", -14, 0)
+    tabs[6]:SetText("Settings")
+    tabs[6].pageName = "settings"
+    tabs[6]:SetScript("OnClick", function()
         ShowPage("settings")
     end)
 
-    PanelTemplates_SetNumTabs(frame, 5)
+    PanelTemplates_SetNumTabs(frame, 6)
     ShowPage("control")
 
     tradeEventFrame = CreateFrame("Frame")

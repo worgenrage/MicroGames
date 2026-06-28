@@ -13,6 +13,7 @@ When the trade window closes, MicroGames expands again only if the trade opening
 - Setup: Shows the recorded name and number snapshot from `StartRaidNumbering()` and setup controls.
 - Rewards: Edits reward yell templates and provides a secondary reward view.
 - History: Shows completed sessions, session details, round results, winners, and rewards.
+- Monitoring: Shows live addon-message debug state from another MicroGames user in the same party or raid.
 - Settings: Edits the whisper text and round roll delay.
 - Settings also controls roll countdown raid warning alerts.
 
@@ -46,6 +47,7 @@ When the trade window closes, MicroGames expands again only if the trade opening
 - Roll countdown sound is stored in `MicroGamesDB.rollCountdownSoundEnabled`.
 - Hiding or closing the UI should preserve all process state.
 - Collapsing and expanding the UI should preserve all process state and the selected tab.
+- Monitoring must be read-only for remote state and must not change gameplay state.
 
 ## Control Bindings
 
@@ -88,4 +90,15 @@ When the trade window closes, MicroGames expands again only if the trade opening
 - The whisper preview uses `addon.API.BuildNumberWhisperMessage(12)`.
 - The delay input calls `addon.API.SetRoundRollDelay(seconds)`.
 - The `Roll Countdown Sound` checkbox calls `addon.API.SetRollCountdownSoundEnabled(enabled)`.
+- The `Test Sound` button calls `addon.API.TestRollCountdownSound()` and sends one raid warning test only when roll countdown sound is enabled.
 - Whisper text, round delay, roll countdown sound, and added reward templates persist through WoW SavedVariables.
+
+## Monitoring Bindings
+
+- The Monitoring tab reads `addon.API.GetMonitoringView()`.
+- `Start Live` calls `addon.API.StartMonitoringBroadcast()` and sends compact addon-message state updates every 1 second to raid or party.
+- `Stop Live` calls `addon.API.StopMonitoringBroadcast()`.
+- `Send Update` calls `addon.API.BroadcastMonitoringState()` and sends one compact addon-message state update to raid or party.
+- `Clear Log` calls `addon.API.ClearMonitoringLog()`.
+- Received monitoring updates show source, event, session state, round, recorded players, pending roll, and winner.
+- Monitoring data is runtime-only and is not stored in SavedVariables.

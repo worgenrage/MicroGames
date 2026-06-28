@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.6
+
+- Added a Settings `Test Sound` button for roll countdown raid warning alerts.
+- Added a `Monitoring` tab with live addon-message debug broadcasts for remote state observation.
+- Hardened monitoring addon-message sends behind prefix registration and group-channel checks.
+
 ## 0.1.5
 
 - Added a persisted `Roll Countdown Sound` setting.

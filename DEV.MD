@@ -40,6 +40,8 @@ Current stored fields:
 - `MicroGamesDB.activeSession`
 - `MicroGamesDB.history`
 
+Monitoring data is runtime-only and is not persisted.
+
 ## Raid Numbering
 
 Raid roster indexes are not used as stable game IDs during gameplay.
@@ -131,6 +133,13 @@ addon.API.SetRoundRollDelay(seconds)
 addon.API.GetRoundRollDelay()
 addon.API.SetRollCountdownSoundEnabled(enabled)
 addon.API.GetRollCountdownSoundEnabled()
+addon.API.TestRollCountdownSound()
+addon.API.BroadcastMonitoringState()
+addon.API.StartMonitoringBroadcast()
+addon.API.StopMonitoringBroadcast()
+addon.API.GetMonitoringBroadcastEnabled()
+addon.API.GetMonitoringView()
+addon.API.ClearMonitoringLog()
 ```
 
 Rules:
@@ -140,6 +149,7 @@ Rules:
 - It announces `ROUND X` in raid chat.
 - After the configured delay, it rolls `RandomRoll(1, assignedCount)`.
 - If `Roll Countdown Sound` is enabled, `RAID_WARNING` countdown messages are sent during the configured delay so raid members receive the normal raid warning alert.
+- `TestRollCountdownSound()` sends a one-off `RAID_WARNING` test message only when `Roll Countdown Sound` is enabled.
 - The game master may need raid leader or assistant permissions for raid warning countdown messages.
 - Roll range is based on the recorded raid snapshot count.
 - `RerollCurrentRound()` rolls again for the current round without incrementing the round counter.
@@ -149,6 +159,31 @@ Rules:
 - Roll result detection listens to `CHAT_MSG_SYSTEM`.
 - Only the game master's own pending roll is accepted.
 - Other players' rolls are ignored.
+
+## Monitoring
+
+Monitoring uses WoW addon messages with the `MicroGames` prefix.
+
+Main API:
+
+```lua
+addon.API.BroadcastMonitoringState()
+addon.API.StartMonitoringBroadcast()
+addon.API.StopMonitoringBroadcast()
+addon.API.GetMonitoringBroadcastEnabled()
+addon.API.GetMonitoringView()
+addon.API.ClearMonitoringLog()
+```
+
+Rules:
+
+- Broadcasts go to `RAID` when the player is in a raid, otherwise `PARTY` when grouped.
+- No broadcast is sent while solo.
+- Live monitoring sends compact runtime state updates every 1 second while enabled.
+- Broadcast payloads are compact runtime state frames for debugging another user's addon state.
+- Monitoring state updates include source, event, session state, round, recorded player count, pending roll, and winner.
+- The Monitoring tab is read-only for remote state and must not modify gameplay state.
+- Key gameplay state changes also broadcast immediate updates while live monitoring is enabled.
 
 ## Winner Actions
 
@@ -216,6 +251,7 @@ Tabs:
 - `Setup`
 - `Rewards`
 - `History`
+- `Monitoring`
 - `Settings`
 
 ### Control
@@ -288,6 +324,21 @@ Contains:
 - paginated round results for the selected session
 - winner and roll timestamp per round
 - reward text and reward timestamp per round
+
+### Monitoring
+
+Runtime debug tab for observing another MicroGames client in the same party or raid.
+
+Contains:
+
+- live remote state
+- local debug state and selected broadcast channel
+- `Start Live` / `Stop Live`
+- `Send Update`
+- `Clear Log`
+- received monitoring event log
+
+The tab uses addon messages only through `C_ChatInfo.SendAddonMessage`. It does not send visible raid chat, whispers, yells, rolls, or rewards.
 
 ### Settings
 
