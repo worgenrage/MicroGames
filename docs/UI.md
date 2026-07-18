@@ -2,10 +2,15 @@
 
 MicroGames uses a movable in-game window opened with `/mg` or `/microgames`.
 Closing the window only hides it. It must not reset numbering, rounds, whisper text, or any game state.
-The `Mini` button collapses the window to a small frame without hiding or resetting it.
-The `Open` button expands the collapsed frame back to the current tab.
+The global mode selector defaults to `Single Raid` and is locked while a game session or roll is active.
+The `Min` button collapses the window to a small frame without hiding or resetting it.
+The `Max` button expands the collapsed frame back to the current tab.
 When the WoW trade window opens, MicroGames automatically collapses if it is visible.
 When the trade window closes, MicroGames expands again only if the trade opening caused the collapse.
+
+In `Multi Raid - Coordinator` mode, the Setup tab shows assistant invite controls and assistant auth status. In `Multi Raid - Assistant` mode, Setup shows pending Coordinator invites and accept/reject controls.
+Coordinator Setup can request accepted Assistant rosters. Assistant Setup can record the local raid, excluding the Assistant character, and send the recorded roster to the Coordinator. If the local raid roster changes after recording, the Assistant roster is marked stale and must be recorded again.
+Coordinator Setup can record the main raid, assign global numbers across received rosters, send assignment ranges to Assistants, dispatch number whispers, and start/stop the Multi Raid game session. In Multi Raid Coordinator mode, Control round rolls use the global assigned range only after the Multi Raid game is active, and Assistants automatically relay round and roll result messages into their own raid chat.
 
 ## Tabs
 
@@ -13,6 +18,7 @@ When the trade window closes, MicroGames expands again only if the trade opening
 - Setup: Shows the recorded name and number snapshot from `StartRaidNumbering()` and setup controls.
 - Rewards: Edits reward yell templates and provides a secondary reward view.
 - History: Shows completed sessions, session details, round results, winners, and rewards.
+- History marks completed sessions as `Single` or `Multi`; Multi sessions include the multi session ID, Coordinator, raid ranges, winner raid IDs, and Assistant verification status.
 - Monitoring: Shows live addon-message debug state from another MicroGames user in the same party or raid.
 - Settings: Edits the whisper text and round roll delay.
 - Settings also controls roll countdown raid warning alerts.
@@ -60,8 +66,13 @@ When the trade window closes, MicroGames expands again only if the trade opening
 - If an active session exists, `StartGameSession()` returns `ACTIVE_SESSION_EXISTS` and must not start a second session.
 - `Record Raid` calls `addon.API.StartRaidNumbering()` and records the current raid snapshot.
 - `Send Numbers` calls `addon.API.SendNumbers()` and whispers numbers to recorded players only while numbering is active.
+- Multi Raid `Send Numbers` calls `addon.API.SendMultiRaidNumbers()`; the Coordinator whispers main-raid players and Assistants automatically whisper their own assigned players.
+- Multi Raid `Start Multi` calls `addon.API.StartMultiRaidGameSession()` and enables Coordinator multi round rolls.
+- Multi Raid `Stop Multi` calls `addon.API.StopMultiRaidGameSession()` and tells Assistants to mark the multi game stopped.
 - `Round Roll` calls `addon.API.RoundRoll()`, announces the next round, then rolls after the configured delay.
+- In Multi Raid Coordinator mode, `Round Roll` calls `addon.API.MultiRaidRoundRoll()` and requires an active Multi Raid game session.
 - `Roll again for ROUND X` calls `addon.API.RerollCurrentRound()`.
+- In Multi Raid Coordinator mode, `Roll again for ROUND X` calls `addon.API.MultiRaidRerollCurrentRound()` and requires an active Multi Raid game session.
 - `Say Winner` calls `addon.API.SendWinnerSay()` with `You win ROUND X come closer! :)`.
 - `Whisper Winner` calls `addon.API.SendWinnerWhisper()` with `You win ROUND X come closer! :)`.
 - Reward buttons call `addon.API.SendRewardYell(index)` from the Control tab during gameplay.

@@ -19,6 +19,8 @@ local MONITORING_ROWS = 8
 
 local frame
 local collapseButton
+local modeDropdown
+local modeStatusText
 local tradeEventFrame
 local tabs = {}
 local pages = {}
@@ -29,6 +31,8 @@ local rewardRows = {}
 local historyRows = {}
 local historyRoundRows = {}
 local monitoringRows = {}
+local multiAssistantRows = {}
+local multiLogRows = {}
 local rosterPage = 1
 local rewardButtonPage = 1
 local rewardSettingsPage = 1
@@ -76,6 +80,12 @@ local rosterStartButton
 local rosterSendButton
 local rosterResetButton
 local rerollButton
+local multiCoordinatorFrame
+local multiAssistantFrame
+local assistantNameEditBox
+local multiCoordinatorSummaryText
+local multiAssistantSummaryText
+local multiSetupStatusText
 
 local function SetButtonEnabled(button, enabled)
     if not button then
@@ -97,9 +107,127 @@ local function SetStatus(text)
     end
 end
 
+local function RefreshModeControl()
+    local mode = API.GetSessionMode()
+    local locked = not API.CanChangeSessionMode()
+
+    if modeDropdown then
+        UIDropDownMenu_SetText(modeDropdown, API.GetSessionModeLabel(mode))
+
+        if locked then
+            UIDropDownMenu_DisableDropDown(modeDropdown)
+        else
+            UIDropDownMenu_EnableDropDown(modeDropdown)
+        end
+    end
+
+    if modeStatusText then
+        if locked then
+            modeStatusText:SetText("Mode locked")
+            modeStatusText:SetTextColor(1, 0.82, 0)
+        else
+            modeStatusText:SetText("")
+        end
+    end
+end
+
+local function IsSingleRaidMode()
+    return API.GetSessionMode() == "single"
+end
+
+local function IsMultiCoordinatorMode()
+    return API.GetSessionMode() == "multi_coordinator"
+end
+
 local function SetRosterStatus(text)
     if rosterStatusText then
         rosterStatusText:SetText(text)
+    end
+end
+
+local function SetMultiSetupStatus(text)
+    if multiSetupStatusText then
+        multiSetupStatusText:SetText(text)
+    end
+end
+
+local function BuildMultiLogText(entry)
+    return tostring(entry.at or "-") .. " | " .. tostring(entry.message or "-")
+end
+
+local function RefreshMultiRaidSetup()
+    local view = API.GetMultiRaidView()
+    local assistants = view.assistants or {}
+    local log = view.log or {}
+
+    if multiCoordinatorSummaryText then
+        multiCoordinatorSummaryText:SetText("Session: " .. tostring(view.sessionId or "-")
+            .. "\nCoordinator: " .. tostring(view.coordinator or "-")
+            .. "\nGame: " .. tostring(view.gameStatus or "not started")
+            .. "\nMain raid: " .. tostring(view.coordinatorRosterStatus or "not recorded")
+            .. " | Eligible: " .. tostring(view.coordinatorRoster and #view.coordinatorRoster or 0)
+            .. " | Total assigned: " .. tostring(view.totalAssigned or "-"))
+    end
+
+    for index = 1, #multiAssistantRows do
+        local row = multiAssistantRows[index]
+        local assistant = assistants[index]
+
+        if assistant then
+            local verifyText = ""
+            local rosterText = assistant.rosterStatus or "not_ready"
+
+            if assistant.lastWinnerVerifyStatus then
+                verifyText = " | " .. tostring(assistant.lastWinnerVerifyNumber or "-")
+                    .. " " .. tostring(assistant.lastWinnerVerifyStatus)
+            end
+
+            row:SetText("Raid " .. tostring(assistant.raidId or "-")
+                .. " | " .. tostring(assistant.senderName or assistant.targetName or "-")
+                .. " | " .. tostring(assistant.status or "-")
+                .. " | " .. tostring(rosterText)
+                .. " " .. tostring(assistant.eligibleCount or "-")
+                .. " | " .. tostring(assistant.rangeStart or "-") .. "-" .. tostring(assistant.rangeEnd or "-")
+                .. " | nums " .. tostring(assistant.numberWhisperStatus or "-")
+                .. verifyText)
+            row:Show()
+        else
+            row:SetText("")
+            row:Hide()
+        end
+    end
+
+    if multiAssistantSummaryText then
+        if view.pendingInvite then
+            multiAssistantSummaryText:SetText("Pending invite from: " .. tostring(view.pendingInvite.coordinator or "-")
+                .. "\nSession: " .. tostring(view.pendingInvite.sessionId or "-")
+                .. "\nAssigned raid: " .. tostring(view.pendingInvite.raidId or "-"))
+        elseif view.acceptedCoordinator then
+            multiAssistantSummaryText:SetText("Connected coordinator: " .. tostring(view.acceptedCoordinator)
+                .. "\nSession: " .. tostring(view.sessionId or "-")
+                .. "\nAssigned raid: " .. tostring(view.assistantRaidId or "-")
+                .. "\nLocal roster: " .. tostring(view.localRosterStatus or "not recorded")
+                .. " | Eligible: " .. tostring(view.localRoster and #view.localRoster or 0)
+                .. "\nAssigned range: " .. tostring(view.assignedRangeStart or "-") .. "-" .. tostring(view.assignedRangeEnd or "-")
+                .. " | Status: " .. tostring(view.assignmentStatus or "-")
+                .. "\nGame: " .. tostring(view.gameStatus or "not started")
+                .. " | Numbers: " .. tostring(view.numberWhisperStatus or "-"))
+        else
+            multiAssistantSummaryText:SetText("No pending Coordinator invite.\nSwitch to this mode, then ask the Coordinator to add your character name.")
+        end
+    end
+
+    for index = 1, #multiLogRows do
+        local row = multiLogRows[index]
+        local entry = log[index]
+
+        if entry then
+            row:SetText(BuildMultiLogText(entry))
+            row:Show()
+        else
+            row:SetText("")
+            row:Hide()
+        end
     end
 end
 
@@ -110,12 +238,20 @@ local function UpdateSummary()
     local rollCommand = API.BuildRollCommand()
     local nextRoundMessage = API.BuildRoundMessage(round + 1)
     local winner = API.GetLastWinner()
+    local invalidRoll = API.GetLastInvalidRoll()
     local winnerMessage = API.BuildWinnerMessage()
     local session = API.GetGameSessionSummary()
     local canModifyRoster = API.CanModifyRoster()
+    local singleRaidMode = IsSingleRaidMode()
+    local multiCoordinatorMode = IsMultiCoordinatorMode()
+    local invalidRollPending = API.HasInvalidRollPending()
+    local multiView = API.GetMultiRaidView()
+    local multiGameActive = multiView.gameStatus == "active"
 
     if activeText then
-        if API.HasRaidNumbers() then
+        if multiCoordinatorMode then
+            activeText:SetText("Multi state: " .. tostring(multiView.gameStatus or "not started"))
+        elseif API.HasRaidNumbers() then
             activeText:SetText("Numbering state: Active")
         else
             activeText:SetText("Numbering state: Inactive")
@@ -123,11 +259,23 @@ local function UpdateSummary()
     end
 
     if countText then
-        countText:SetText("Recorded players: " .. tostring(count))
+        if multiCoordinatorMode then
+            countText:SetText("Global assigned players: " .. tostring(multiView.totalAssigned or 0))
+        else
+            countText:SetText("Recorded players: " .. tostring(count))
+        end
     end
 
     if gameSessionText then
-        if session.active then
+        if multiCoordinatorMode then
+            if multiGameActive then
+                gameSessionText:SetText("MULTI STARTED - ROUND " .. tostring(round) .. " - MEMBERS " .. tostring(multiView.totalAssigned or 0))
+                gameSessionText:SetTextColor(0.2, 1, 0.2)
+            else
+                gameSessionText:SetText("MULTI STOPPED - ROUND " .. tostring(round) .. " - MEMBERS " .. tostring(multiView.totalAssigned or 0))
+                gameSessionText:SetTextColor(1, 0.82, 0)
+            end
+        elseif session.active then
             gameSessionText:SetText("EVENT STARTED - ROUND " .. tostring(round) .. " - MEMBERS " .. tostring(count))
             gameSessionText:SetTextColor(0.2, 1, 0.2)
         else
@@ -136,12 +284,13 @@ local function UpdateSummary()
         end
     end
 
-    SetButtonEnabled(startGameButton, not session.active)
+    SetButtonEnabled(startGameButton, singleRaidMode and not session.active)
     SetButtonEnabled(stopGameButton, session.active and not API.HasPendingRoll())
-    SetButtonEnabled(rosterStartButton, canModifyRoster)
-    SetButtonEnabled(rosterSendButton, canModifyRoster and API.HasRaidNumbers() and count > 0)
-    SetButtonEnabled(rosterResetButton, canModifyRoster)
-    SetButtonEnabled(roundRollButton, session.active and count > 0 and not API.HasPendingRoll())
+    SetButtonEnabled(rosterStartButton, singleRaidMode and canModifyRoster)
+    SetButtonEnabled(rosterSendButton, singleRaidMode and canModifyRoster and API.HasRaidNumbers() and count > 0)
+    SetButtonEnabled(rosterResetButton, singleRaidMode and canModifyRoster)
+    SetButtonEnabled(roundRollButton, (singleRaidMode and session.active and count > 0 and not API.HasPendingRoll() and not invalidRollPending)
+        or (multiCoordinatorMode and multiGameActive and not API.HasPendingRoll() and not invalidRollPending))
 
     if rosterSendButton then
         rosterSendButton:SetText("Send Numbers (" .. tostring(count) .. ")")
@@ -164,18 +313,26 @@ local function UpdateSummary()
     end
 
     if rollText then
-        rollText:SetText("Next roll range: " .. (rollCommand or "-"))
+        if multiCoordinatorMode and (multiView.totalAssigned or 0) > 0 then
+            rollText:SetText("Next roll range: /roll 1-" .. tostring(multiView.totalAssigned))
+        else
+            rollText:SetText("Next roll range: " .. (rollCommand or "-"))
+        end
     end
 
     if rerollButton then
         rerollButton:SetText(API.BuildRerollButtonText())
-        SetButtonEnabled(rerollButton, session.active and round > 0 and count > 0 and not API.HasPendingRoll())
+        SetButtonEnabled(rerollButton, (singleRaidMode and session.active and round > 0 and count > 0 and not API.HasPendingRoll())
+            or (multiCoordinatorMode and multiGameActive and round > 0 and not API.HasPendingRoll()))
     end
 
     if winnerText then
         if winner then
             winnerText:SetText("Winner number: #" .. tostring(winner.number))
             winnerText:SetTextColor(1, 0.86, 0)
+        elseif invalidRoll then
+            winnerText:SetText("Invalid roll: #" .. tostring(invalidRoll.number))
+            winnerText:SetTextColor(1, 0.35, 0.2)
         else
             winnerText:SetText("Winner number: -")
             winnerText:SetTextColor(1, 0.86, 0)
@@ -186,6 +343,9 @@ local function UpdateSummary()
         if winner and winner.name then
             winnerNameText:SetText("Winner name: " .. tostring(winner.name))
             winnerNameText:SetTextColor(0.2, 1, 0.2)
+        elseif invalidRoll then
+            winnerNameText:SetText("Offline player: " .. tostring(invalidRoll.name or "-"))
+            winnerNameText:SetTextColor(1, 0.35, 0.2)
         else
             winnerNameText:SetText("Winner name: -")
             winnerNameText:SetTextColor(0.2, 1, 0.2)
@@ -195,13 +355,19 @@ local function UpdateSummary()
     if winnerPanel and winnerPanel.background then
         if winner then
             winnerPanel.background:SetColorTexture(0.08, 0.22, 0.08, 0.82)
+        elseif invalidRoll then
+            winnerPanel.background:SetColorTexture(0.28, 0.08, 0.04, 0.82)
         else
             winnerPanel.background:SetColorTexture(0.12, 0.12, 0.12, 0.65)
         end
     end
 
     if winnerMessageText then
-        winnerMessageText:SetText("Winner message: " .. (winnerMessage or "-"))
+        if invalidRoll then
+            winnerMessageText:SetText("Offline winner. Roll again for this round.")
+        else
+            winnerMessageText:SetText("Winner message: " .. (winnerMessage or "-"))
+        end
     end
 
     if whisperPreviewText then
@@ -212,6 +378,25 @@ end
 local function RefreshRoster()
     local entries = API.GetRaidNumberEntries()
     local totalPages = math.max(1, math.ceil(#entries / ROWS_PER_PAGE))
+    local mode = API.GetSessionMode()
+
+    if multiCoordinatorFrame then
+        if mode == "multi_coordinator" then
+            multiCoordinatorFrame:Show()
+        else
+            multiCoordinatorFrame:Hide()
+        end
+    end
+
+    if multiAssistantFrame then
+        if mode == "multi_assistant" then
+            multiAssistantFrame:Show()
+        else
+            multiAssistantFrame:Hide()
+        end
+    end
+
+    RefreshMultiRaidSetup()
 
     if rosterPage > totalPages then
         rosterPage = totalPages
@@ -317,8 +502,12 @@ local function BuildHistoryRowText(session, index)
     local stoppedAt = session.stoppedAt or "-"
     local rounds = session.totalRounds or session.currentRound or 0
     local players = session.finalAssignedCount or session.assignedCount or 0
+    local sessionType = session.sessionType == "multi" and "Multi" or "Single"
 
-    return "#" .. tostring(index) .. "  " .. tostring(startedAt) .. " - rounds " .. tostring(rounds) .. " - players " .. tostring(players) .. " - stopped " .. tostring(stoppedAt)
+    return "#" .. tostring(index) .. "  " .. sessionType .. "  " .. tostring(startedAt)
+        .. " - rounds " .. tostring(rounds)
+        .. " - players " .. tostring(players)
+        .. " - stopped " .. tostring(stoppedAt)
 end
 
 local function HistoryColor(text, color)
@@ -343,14 +532,36 @@ local function BuildHistoryDetailText(session, index)
     local rewards = session.rewards or {}
     local winnerName = session.finalWinnerName or "-"
     local winnerNumber = session.finalWinnerNumber or "-"
+    local sessionType = session.sessionType == "multi" and "Multi Raid" or "Single Raid"
 
-    lines[#lines + 1] = "Session #" .. tostring(index)
+    lines[#lines + 1] = "Session #" .. tostring(index) .. " - " .. sessionType
     lines[#lines + 1] = "Started: " .. tostring(session.startedAt or "-")
     lines[#lines + 1] = "Stopped: " .. tostring(session.stoppedAt or "-")
     lines[#lines + 1] = "Players: " .. tostring(session.finalAssignedCount or session.assignedCount or 0)
     lines[#lines + 1] = "Rounds: " .. tostring(session.totalRounds or session.currentRound or #rounds)
     lines[#lines + 1] = "Final winner: #" .. tostring(winnerNumber) .. " - " .. tostring(winnerName)
     lines[#lines + 1] = "Rewards sent: " .. tostring(#rewards)
+
+    if session.sessionType == "multi" then
+        local ranges = session.raidRanges or {}
+        local rangeText = {}
+
+        lines[#lines + 1] = "Multi session: " .. tostring(session.sessionId or "-")
+        lines[#lines + 1] = "Coordinator: " .. tostring(session.coordinator or "-")
+
+        for raidId, range in pairs(ranges) do
+            if type(range) == "table" then
+                rangeText[#rangeText + 1] = "R" .. tostring(raidId)
+                    .. " " .. tostring(range.rangeStart or "-")
+                    .. "-" .. tostring(range.rangeEnd or "-")
+                    .. " (" .. tostring(range.eligibleCount or 0) .. ")"
+            end
+        end
+
+        if #rangeText > 0 then
+            lines[#lines + 1] = "Raid ranges: " .. table.concat(rangeText, "; ")
+        end
+    end
 
     return table.concat(lines, "\n")
 end
@@ -383,15 +594,36 @@ local function BuildRoundHistoryText(round, rewardsByRound)
     local roundNumber = round.round or "?"
     local rewards = rewardsByRound[round.round or 0]
     local rewardText = "Reward: -"
+    local invalidText = nil
+    local winnerRaidText = ""
+    local verifyText = ""
 
     if type(rewards) == "table" and #rewards > 0 then
         rewardText = "Reward: " .. table.concat(rewards, "; ")
+    end
+
+    if round.winnerRaidId then
+        winnerRaidText = " R" .. tostring(round.winnerRaidId)
+    end
+
+    if round.verifyStatus then
+        verifyText = " | " .. tostring(round.verifyStatus)
+    end
+
+    if round.invalidRollNumber then
+        invalidText = " | Invalid #" .. tostring(round.invalidRollNumber)
+            .. " " .. HistoryColor(round.invalidWinnerName or "-", "ff8060")
+            .. (round.invalidWinnerRaidId and (" R" .. tostring(round.invalidWinnerRaidId)) or "")
+            .. " (" .. tostring(round.invalidReason or "INVALID") .. ")"
     end
 
     return "R" .. tostring(roundNumber)
         .. " | " .. tostring(rolledAt)
         .. " | #" .. tostring(rollNumber)
         .. " " .. HistoryColor(winnerName, "80ff80")
+        .. winnerRaidText
+        .. verifyText
+        .. (invalidText or "")
         .. " | " .. rewardText
 end
 
@@ -442,8 +674,13 @@ local function RefreshHistory()
         historyPage = totalPages
     end
 
+    if selectedHistoryIndex and selectedHistoryIndex > #history then
+        selectedHistoryIndex = nil
+    end
+
     if not selectedHistoryIndex and #history > 0 then
         selectedHistoryIndex = #history
+        historyPage = math.ceil(selectedHistoryIndex / HISTORY_ROWS_PER_PAGE)
         historyRoundPage = 1
     end
 
@@ -569,6 +806,7 @@ local function RefreshMonitoring()
 end
 
 local function RefreshAll()
+    RefreshModeControl()
     UpdateSummary()
     RefreshRoster()
     RefreshRewardButtons()
@@ -590,6 +828,35 @@ local function RefreshAll()
 
     if rewardEditBox then
         rewardEditBox:SetText("")
+    end
+end
+
+local function InitializeModeDropdown(self)
+    local options = API.GetSessionModeOptions()
+
+    for index = 1, #options do
+        local option = options[index]
+        local info = UIDropDownMenu_CreateInfo()
+
+        info.text = option.label
+        info.value = option.value
+        info.checked = option.value == API.GetSessionMode()
+        info.func = function(button)
+            local ok, result = API.SetSessionMode(button.value)
+
+            if ok then
+                currentPageName = "control"
+                SetStatus("Mode set to " .. API.GetSessionModeLabel(button.value) .. ".")
+            elseif result == "SESSION_MODE_LOCKED" then
+                SetStatus("Cannot change mode while a session or roll is active.")
+            else
+                SetStatus("Cannot change mode: " .. tostring(result))
+            end
+
+            RefreshAll()
+        end
+
+        UIDropDownMenu_AddButton(info)
     end
 end
 
@@ -618,13 +885,29 @@ local function SetCollapsed(value)
         end
 
         if collapseButton then
-            collapseButton:SetText("Open")
+            collapseButton:SetText("Max")
+        end
+
+        if modeDropdown then
+            modeDropdown:Hide()
+        end
+
+        if modeStatusText then
+            modeStatusText:Hide()
         end
 
         return
     end
 
     frame:SetSize(FRAME_WIDTH, FRAME_HEIGHT)
+
+    if modeDropdown then
+        modeDropdown:Show()
+    end
+
+    if modeStatusText then
+        modeStatusText:Show()
+    end
 
     for index = 1, #tabs do
         tabs[index]:Show()
@@ -654,7 +937,7 @@ local function SetCollapsed(value)
     end
 
     if collapseButton then
-        collapseButton:SetText("Mini")
+        collapseButton:SetText("Min")
     end
 
     RefreshAll()
@@ -759,7 +1042,13 @@ local function CreateControlPage(parent)
     CreateSeparator(page, -66)
 
     roundRollButton = CreateButton(page, "Round Roll", 0, -78, 410, 42, function()
-        local ok, result = API.RoundRoll()
+        local ok, result
+
+        if IsMultiCoordinatorMode() then
+            ok, result = API.MultiRaidRoundRoll()
+        else
+            ok, result = API.RoundRoll()
+        end
 
         if ok then
             SetStatus("Round " .. tostring(result) .. " announced. Roll pending.")
@@ -771,7 +1060,13 @@ local function CreateControlPage(parent)
     end)
 
     rerollButton = CreateButton(page, API.BuildRerollButtonText(), 126, -124, 158, 22, function()
-        local ok, result = API.RerollCurrentRound()
+        local ok, result
+
+        if IsMultiCoordinatorMode() then
+            ok, result = API.MultiRaidRerollCurrentRound()
+        else
+            ok, result = API.RerollCurrentRound()
+        end
 
         if ok then
             SetStatus("Reroll pending for ROUND " .. tostring(result) .. ".")
@@ -993,6 +1288,213 @@ local function CreateRosterPage(parent)
 
     rosterStatusText = CreateValue(page, 0, -444, 410)
     rosterStatusText:SetText("Setup ready.")
+
+    multiCoordinatorFrame = CreateFrame("Frame", nil, page)
+    multiCoordinatorFrame:SetPoint("TOPLEFT", page, "TOPLEFT", 0, 0)
+    multiCoordinatorFrame:SetSize(410, 506)
+    multiCoordinatorFrame.background = multiCoordinatorFrame:CreateTexture(nil, "BACKGROUND")
+    multiCoordinatorFrame.background:SetAllPoints(multiCoordinatorFrame)
+    multiCoordinatorFrame.background:SetColorTexture(0.07, 0.07, 0.07, 0.96)
+    multiCoordinatorFrame:Hide()
+
+    CreateLabel(multiCoordinatorFrame, "Multi Raid Coordinator", 0, 0)
+    multiCoordinatorSummaryText = CreateValue(multiCoordinatorFrame, 0, -28, 410)
+    multiCoordinatorSummaryText:SetHeight(58)
+    multiCoordinatorSummaryText:SetJustifyV("TOP")
+
+    CreateSeparator(multiCoordinatorFrame, -92)
+    CreateLabel(multiCoordinatorFrame, "Assistant character name", 0, -104)
+    assistantNameEditBox = CreateEditBox(multiCoordinatorFrame, 0, -132, 258, 24)
+    CreateButton(multiCoordinatorFrame, "Add Assistant", 272, -132, 126, 24, function()
+        local ok, result = API.AddMultiRaidAssistant(assistantNameEditBox:GetText())
+
+        if ok then
+            assistantNameEditBox:SetText("")
+            SetMultiSetupStatus("Assistant invite sent.")
+        elseif result == "ASSISTANT_NAME_REQUIRED" then
+            SetMultiSetupStatus("Enter an assistant character name.")
+        else
+            SetMultiSetupStatus("Assistant invite failed: " .. tostring(result))
+        end
+
+        RefreshAll()
+    end)
+
+    CreateSeparator(multiCoordinatorFrame, -172)
+    CreateLabel(multiCoordinatorFrame, "Assistants", 0, -184)
+
+    for i = 1, 5 do
+        local row = CreateValue(multiCoordinatorFrame, 0, -210 - ((i - 1) * 24), 410)
+        multiAssistantRows[i] = row
+    end
+
+    CreateButton(multiCoordinatorFrame, "Clear Multi", 0, -344, 112, 24, function()
+        local ok, result = API.ClearMultiRaidSession()
+
+        if ok then
+            SetMultiSetupStatus("Multi-raid session cleared.")
+        else
+            SetMultiSetupStatus("Cannot clear multi-raid session: " .. tostring(result))
+        end
+
+        RefreshAll()
+    end)
+
+    CreateButton(multiCoordinatorFrame, "Request Rosters", 128, -344, 132, 24, function()
+        local ok, result = API.RequestMultiRaidRosters()
+
+        if ok then
+            SetMultiSetupStatus("Roster requests sent: " .. tostring(result) .. ".")
+        else
+            SetMultiSetupStatus("Roster request failed: " .. tostring(result))
+        end
+
+        RefreshAll()
+    end)
+
+    CreateButton(multiCoordinatorFrame, "Record Main Raid", 276, -344, 126, 24, function()
+        local ok, result = API.RecordMultiRaidCoordinatorRoster()
+
+        if ok then
+            SetMultiSetupStatus("Main raid recorded: " .. tostring(result) .. ".")
+        else
+            SetMultiSetupStatus("Cannot record main raid: " .. tostring(result))
+        end
+
+        RefreshAll()
+    end)
+
+    CreateButton(multiCoordinatorFrame, "Assign Numbers", 0, -378, 132, 24, function()
+        local ok, result = API.AssignMultiRaidGlobalNumbers()
+
+        if ok then
+            SetMultiSetupStatus("Global numbers assigned: " .. tostring(result) .. ".")
+        else
+            SetMultiSetupStatus("Cannot assign numbers: " .. tostring(result))
+        end
+
+        RefreshAll()
+    end)
+
+    CreateButton(multiCoordinatorFrame, "Send Numbers", 148, -378, 112, 24, function()
+        local ok, result = API.SendMultiRaidNumbers()
+
+        if ok then
+            SetMultiSetupStatus("Number dispatch started: " .. tostring(result) .. ".")
+        else
+            SetMultiSetupStatus("Cannot send numbers: " .. tostring(result))
+        end
+
+        RefreshAll()
+    end)
+
+    CreateButton(multiCoordinatorFrame, "Start Multi", 276, -378, 126, 24, function()
+        local ok, result = API.StartMultiRaidGameSession()
+
+        if ok then
+            SetMultiSetupStatus("Multi game started: " .. tostring(result) .. " players.")
+        else
+            SetMultiSetupStatus("Cannot start multi game: " .. tostring(result))
+        end
+
+        RefreshAll()
+    end)
+
+    CreateButton(multiCoordinatorFrame, "Stop Multi", 0, -412, 112, 24, function()
+        local ok, result = API.StopMultiRaidGameSession()
+
+        if ok then
+            SetMultiSetupStatus("Multi game stopped.")
+        else
+            SetMultiSetupStatus("Cannot stop multi game: " .. tostring(result))
+        end
+
+        RefreshAll()
+    end)
+
+    multiAssistantFrame = CreateFrame("Frame", nil, page)
+    multiAssistantFrame:SetPoint("TOPLEFT", page, "TOPLEFT", 0, 0)
+    multiAssistantFrame:SetSize(410, 506)
+    multiAssistantFrame.background = multiAssistantFrame:CreateTexture(nil, "BACKGROUND")
+    multiAssistantFrame.background:SetAllPoints(multiAssistantFrame)
+    multiAssistantFrame.background:SetColorTexture(0.07, 0.07, 0.07, 0.96)
+    multiAssistantFrame:Hide()
+
+    CreateLabel(multiAssistantFrame, "Multi Raid Assistant", 0, 0)
+    multiAssistantSummaryText = CreateValue(multiAssistantFrame, 0, -28, 410)
+    multiAssistantSummaryText:SetHeight(78)
+    multiAssistantSummaryText:SetJustifyV("TOP")
+
+    CreateButton(multiAssistantFrame, "Accept", 0, -124, 92, 24, function()
+        local ok, result = API.AcceptMultiRaidInvite()
+
+        if ok then
+            SetMultiSetupStatus("Coordinator invite accepted.")
+        else
+            SetMultiSetupStatus("Cannot accept invite: " .. tostring(result))
+        end
+
+        RefreshAll()
+    end)
+
+    CreateButton(multiAssistantFrame, "Reject", 108, -124, 92, 24, function()
+        local ok, result = API.RejectMultiRaidInvite()
+
+        if ok then
+            SetMultiSetupStatus("Coordinator invite rejected.")
+        else
+            SetMultiSetupStatus("Cannot reject invite: " .. tostring(result))
+        end
+
+        RefreshAll()
+    end)
+
+    CreateButton(multiAssistantFrame, "Clear Multi", 216, -124, 112, 24, function()
+        local ok, result = API.ClearMultiRaidSession()
+
+        if ok then
+            SetMultiSetupStatus("Multi-raid session cleared.")
+        else
+            SetMultiSetupStatus("Cannot clear multi-raid session: " .. tostring(result))
+        end
+
+        RefreshAll()
+    end)
+
+    CreateButton(multiAssistantFrame, "Record Local Raid", 0, -162, 136, 24, function()
+        local ok, result = API.RecordMultiRaidLocalRoster()
+
+        if ok then
+            SetMultiSetupStatus("Local roster recorded: " .. tostring(result) .. ".")
+        else
+            SetMultiSetupStatus("Cannot record local roster: " .. tostring(result))
+        end
+
+        RefreshAll()
+    end)
+
+    CreateButton(multiAssistantFrame, "Send Roster", 152, -162, 112, 24, function()
+        local ok, result = API.SendMultiRaidRoster()
+
+        if ok then
+            SetMultiSetupStatus("Local roster sent: " .. tostring(result) .. ".")
+        else
+            SetMultiSetupStatus("Cannot send roster: " .. tostring(result))
+        end
+
+        RefreshAll()
+    end)
+
+    CreateSeparator(multiAssistantFrame, -208)
+    CreateLabel(multiAssistantFrame, "Auth log", 0, -220)
+
+    for i = 1, 6 do
+        local row = CreateValue(multiAssistantFrame, 0, -246 - ((i - 1) * 22), 410)
+        multiLogRows[i] = row
+    end
+
+    multiSetupStatusText = CreateValue(page, 0, -486, 410)
+    multiSetupStatusText:SetText("")
 
     return page
 end
@@ -1441,10 +1943,21 @@ function UI.Create()
     frame.title:SetPoint("LEFT", frame.TitleBg, "LEFT", 6, 0)
     frame.title:SetText("MicroGames")
 
+    modeStatusText = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    modeStatusText:SetPoint("RIGHT", frame, "TOPRIGHT", -86, -14)
+    modeStatusText:SetWidth(82)
+    modeStatusText:SetJustifyH("RIGHT")
+
+    modeDropdown = CreateFrame("Frame", "MicroGamesModeDropdown", frame, "UIDropDownMenuTemplate")
+    modeDropdown:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -154, -3)
+    UIDropDownMenu_SetWidth(modeDropdown, 158)
+    UIDropDownMenu_Initialize(modeDropdown, InitializeModeDropdown)
+    UIDropDownMenu_SetText(modeDropdown, API.GetSessionModeLabel())
+
     collapseButton = CreateFrame("Button", nil, frame, "UIPanelButtonTemplate")
     collapseButton:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -32, -4)
     collapseButton:SetSize(46, 20)
-    collapseButton:SetText("Mini")
+    collapseButton:SetText("Min")
     collapseButton:SetScript("OnClick", function()
         SetCollapsed(not collapsed)
     end)

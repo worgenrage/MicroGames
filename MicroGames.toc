@@ -2,7 +2,7 @@
 ## Title: MicroGames
 ## Notes: Micro games addon for WoW Classic Era / Hardcore 1.15.8.
 ## Author: hamar
-## Version: 0.1.7
+## Version: 0.2.0
 ## SavedVariables: MicroGamesDB
 
 API.lua

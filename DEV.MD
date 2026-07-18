@@ -36,11 +36,15 @@ Current stored fields:
 - `MicroGamesDB.numberWhisperText`
 - `MicroGamesDB.roundRollDelay`
 - `MicroGamesDB.rollCountdownSoundEnabled`
+- `MicroGamesDB.sessionMode`
+- `MicroGamesDB.multiRaid`
 - `MicroGamesDB.rewardTemplates`
 - `MicroGamesDB.activeSession`
 - `MicroGamesDB.history`
 
 Monitoring data is runtime-only and is not persisted.
+
+Multi-raid setup and runtime coordination data is stored under `MicroGamesDB.multiRaid`.
 
 ## Raid Numbering
 
@@ -106,6 +110,7 @@ Rules:
 Saved session data includes:
 
 - start and stop timestamps
+- session type (`single` or `multi`)
 - roster snapshot
 - assigned count
 - round count
@@ -159,6 +164,8 @@ Rules:
 - Roll result detection listens to `CHAT_MSG_SYSTEM`.
 - Only the game master's own pending roll is accepted.
 - Other players' rolls are ignored.
+- If a roll resolves to an offline recorded snapshot player, the roll is marked invalid and the same round must be rerolled.
+- Offline invalid rolls do not change or shift assigned player numbers.
 
 ## Monitoring
 
@@ -246,8 +253,11 @@ The main UI is movable and uses high enough frame strata/level to avoid click-th
 - `DIALOG` strata
 - frame level `100`
 - tabs are inside the main frame bounds
-- `Mini` collapses the UI to a small frame without resetting state
-- `Open` expands the collapsed frame back to the current tab
+- the global mode selector defaults to `Single Raid`
+- mode options are `Single Raid`, `Multi Raid - Coordinator`, and `Multi Raid - Assistant`
+- mode switching is locked while a game session or roll is active
+- `Min` collapses the UI to a small frame without resetting state
+- `Max` expands the collapsed frame back to the current tab
 - `TRADE_SHOW` automatically collapses the UI when the frame is visible
 - `TRADE_CLOSED` expands it again only when trade opening caused the collapse
 
@@ -306,6 +316,52 @@ Contains:
 - Setup-local status line
 
 Setup controls, including per-player number sends, are locked while a game session is active or a roll is pending.
+
+In `Multi Raid - Coordinator` mode, Setup shows Coordinator auth controls:
+
+- session ID
+- assistant character name input
+- assistant invite/status list
+- roster request control
+- assistant roster status and eligible count
+- main-raid roster recording
+- global number assignment
+- global number whisper dispatch
+- multi game start/stop controls
+- assistant assignment range/status
+- multi-raid auth log and clear control
+
+In `Multi Raid - Assistant` mode, Setup shows Assistant auth controls:
+
+- pending Coordinator invite
+- accepted Coordinator/session status
+- `Accept` / `Reject` invite controls
+- `Record Local Raid`
+- `Send Roster`
+- local roster status and eligible count
+- assigned global range and assignment status
+- automatic number whisper relay after Coordinator dispatch
+- multi game start/stop status
+- multi-raid auth log and clear control
+
+Multi-raid auth uses addon-message whispers through the `MicroGames` prefix. Assistants are manually added by character name; `Name-Realm` is supported when needed. Existing Single Raid gameplay actions are blocked while a multi-raid mode is selected.
+
+Multi-raid roster sync is Assistant-owned:
+
+- The Assistant records its current raid snapshot locally.
+- The Assistant excludes itself from eligible players.
+- The Assistant sends the recorded roster to the Coordinator through chunked addon-message whispers.
+- The Coordinator can request rosters, but the request does not remotely create a snapshot.
+- If the Assistant raid roster changes after recording, the local roster becomes stale and must be recorded again before sending.
+- The Coordinator records its own main raid separately and excludes the Coordinator character.
+- The Coordinator assigns global numbers only after its own roster is recorded and accepted Assistant rosters are received.
+- Assignments are sent to Assistants as chunked addon-message whispers.
+- The Coordinator can dispatch global number whispers after assignment; the Coordinator whispers main-raid players and Assistants whisper their own assigned local players.
+- The Coordinator must start the Multi Raid game session before multi round rolls or rerolls can run.
+- Active multi games lock roster recording, roster sending, and global assignment changes.
+- Coordinator multi-raid round announcements and roll results are relayed by Assistants into their own raid chat.
+- Completed Multi Raid sessions are appended to the same `MicroGamesDB.history` list as Single Raid sessions with `sessionType = "multi"`.
+- Multi Raid history stores the Coordinator, multi session ID, global roster assignments, raid ranges, Assistant summaries, round results, winner raid IDs, Assistant verification status, invalid offline rolls, and rewards.
 
 ### Rewards
 
@@ -380,4 +436,5 @@ git diff --check
 
 ## Known Next Steps
 
+- Add UI disable states for individual Multi Raid setup buttons.
 - Consider chat throttling for mass whisper sending.

@@ -82,6 +82,8 @@
 - The roll range must use the `StartRaidNumbering()` snapshot count, not the current live raid size.
 - Use `RandomRoll(1, recordedCount)` for the actual roll; `BuildRollCommand()` is only a display preview.
 - Detect the pending roll result from `CHAT_MSG_SYSTEM`, accept only the game master's own roll, and resolve the winner against the recorded snapshot.
+- If the resolved snapshot player is offline in the current live raid roster, record the roll as invalid and require a reroll for the same round.
+- Offline invalid rolls must not change or shift assigned player numbers.
 - Roll result parsing only needs to support English client `CHAT_MSG_SYSTEM` roll messages.
 - Pending roll state must not persist through `/reload` because scheduled roll timers do not survive reload.
 - The UI should prominently show the winner number and matching player name after a roll.
@@ -127,3 +129,19 @@
 - Setup controls must be locked while a game session is active or a roll is pending.
 - Active session state must survive `/reload`, window close/open, and addon UI recreation.
 - Keep session persistence documented in `docs/Sessions.md`.
+
+## Multi Raid Model
+
+- Assistant selection/auth and Assistant roster readiness are separate states.
+- The Coordinator may request an Assistant roster, but the request must not remotely create a roster snapshot.
+- Assistants record their own local raid snapshot and send it to the Coordinator.
+- Assistant local roster snapshots exclude the Assistant character.
+- If the Assistant's local raid roster changes after recording, mark the local roster stale and require a new record before sending.
+- The Coordinator records its own main raid separately, assigns one global number range, and sends Assistant ranges through addon-message whispers.
+- The Coordinator can dispatch number whispers after global assignment: local main-raid players are whispered by the Coordinator, Assistant raid players are whispered by their accepted Assistant.
+- Multi Raid round rolls and rerolls require an active Multi Raid game session started by the Coordinator.
+- Active Multi Raid games must lock roster recording, roster sending, and global assignment mutation.
+- Completed Multi Raid games are stored in the shared `MicroGamesDB.history` list with `sessionType = "multi"`.
+- Multi Raid history should retain the multi session ID, Coordinator, global assignments, raid ranges, Assistant summaries, winner raid IDs, and Assistant verification status.
+- Coordinator multi-raid rolls are authoritative, but other raids cannot see the native system roll; Assistants relay Coordinator round and roll result messages into their own raid chat.
+- Assistant relay must only run for the accepted Coordinator/session pair.
