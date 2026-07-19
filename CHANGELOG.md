@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.1
+
+- Fixed Single Raid roster recording so the local player running the addon is excluded from MG number assignment.
+- Single Raid roll ranges now use the eligible recorded player count instead of the full raid size.
+- Kept winner lookup and offline reroll behavior based on the stable recorded snapshot.
+
 ## 0.2.0
 
 - Added completed Multi Raid session history persistence.

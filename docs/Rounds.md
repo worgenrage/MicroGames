@@ -16,7 +16,8 @@ Rounds do not advance while the addon is loading.
 - The UI should show the current round and the previous completed round.
 - During `ROUND 1`, there is no previous completed round to show.
 - The addon announces the round in raid chat as `ROUND X`.
-- After a short delay, the addon rolls from 1 to the number of players recorded by `StartRaidNumbering()`.
+- After a short delay, the addon rolls from 1 to the number of eligible players recorded by `StartRaidNumbering()`.
+- In Single Raid mode, `StartRaidNumbering()` excludes the local player running the addon before assigning MG numbers.
 - In Multi Raid Coordinator mode, the addon rolls from 1 to the global assigned player count created by `AssignMultiRaidGlobalNumbers()`.
 - Multi Raid rolls and rerolls require an active Multi Raid game session started by the Coordinator.
 - If `Roll Countdown Sound` is enabled, `RAID_WARNING` countdown messages are sent during the configured roll delay so raid members receive the normal raid warning alert.

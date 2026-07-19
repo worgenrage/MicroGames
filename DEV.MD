@@ -53,9 +53,10 @@ Raid roster indexes are not used as stable game IDs during gameplay.
 Workflow:
 
 1. Take a snapshot of the current raid roster.
-2. Assign stable MG numbers by snapshot order.
-3. Store both number-to-name and name-to-number mappings.
-4. Do not shift numbers when players leave.
+2. Exclude the local player running the addon from the eligible snapshot.
+3. Assign stable MG numbers by snapshot order.
+4. Store both number-to-name and name-to-number mappings.
+5. Do not shift numbers when players leave.
 
 Main API:
 
@@ -72,6 +73,7 @@ addon.API.SendNumberWhisperToName(name)
 ```
 
 Number whispers require active numbering. `StopRaidNumbering()` keeps the recorded list visible but disables number whisper sending until numbering is started again.
+In Single Raid mode, the local player running the addon is never assigned an MG number.
 
 Default number whisper:
 
@@ -156,7 +158,7 @@ Rules:
 - If `Roll Countdown Sound` is enabled, `RAID_WARNING` countdown messages are sent during the configured delay so raid members receive the normal raid warning alert.
 - `TestRollCountdownSound()` sends a one-off `RAID_WARNING` test message only when `Roll Countdown Sound` is enabled.
 - The game master may need raid leader or assistant permissions for raid warning countdown messages.
-- Roll range is based on the recorded raid snapshot count.
+- Roll range is based on the recorded eligible snapshot count, excluding the local player running the addon.
 - `RerollCurrentRound()` rolls again for the current round without incrementing the round counter.
 - `RoundRoll()` and `RerollCurrentRound()` return `ROLL_PENDING` while a previous delayed roll is still pending.
 - Pending roll state is not restored after `/reload` because scheduled roll timers do not survive reload.

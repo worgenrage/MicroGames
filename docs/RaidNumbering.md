@@ -15,6 +15,7 @@ Counting only happens when the game master explicitly starts the numbering flow 
 - Raid roster indexes are not stable game identifiers.
 - If a player leaves, joins, or the roster changes, WoW raid indexes can shift.
 - MicroGames assigns stable `gameNumber` values from a snapshot of the raid roster.
+- The snapshot excludes the local player running the addon, so the game master does not receive an MG number.
 - The assignment is created only by an explicit `addon.API.StartRaidNumbering()` call.
 - Starting raid numbering never sends whispers automatically.
 - After assignment, lookups must use the MicroGames tables, not the live raid index.
@@ -48,6 +49,7 @@ addon.API.ResetRaidNumbering()
 
 The game master can send the assigned number to every recorded raid member by whisper from a separate UX action, for example a `SendNumbers` button.
 Starting raid numbering does not send any messages.
+In Single Raid mode, the local player running the addon is skipped before MG numbers are assigned.
 Whispers use the snapshot created by `addon.API.StartRaidNumbering()`, not the current live raid roster.
 Whispers require active numbering. After `addon.API.StopRaidNumbering()`, the recorded snapshot remains visible, but number whispers do not send until numbering is started again.
 

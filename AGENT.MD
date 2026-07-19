@@ -54,6 +54,7 @@
 - `GetRaidRosterInfo(index)` and `UnitInRaid(unit)` return current roster positions that can shift when the raid changes.
 - Do not count or assign raid numbers during addon load.
 - MicroGames should assign stable game numbers from a raid roster snapshot only when the game master explicitly starts numbering from the UX.
+- Single Raid snapshots must exclude the local player running the addon.
 - Store assignments by player name and by game number.
 - A player leaving the raid does not free or shift their assigned game number.
 - New players do not receive a number automatically during an active game unless explicit game logic is added.
@@ -78,7 +79,7 @@
 - The UI should show both the current round and the previous completed round.
 - During `ROUND 1`, there is no previous completed round, so show `-`.
 - Announce rounds in raid chat as `ROUND X`.
-- After a short delay, roll from 1 to the recorded raid number count.
+- After a short delay, roll from 1 to the recorded eligible raid number count.
 - The roll range must use the `StartRaidNumbering()` snapshot count, not the current live raid size.
 - Use `RandomRoll(1, recordedCount)` for the actual roll; `BuildRollCommand()` is only a display preview.
 - Detect the pending roll result from `CHAT_MSG_SYSTEM`, accept only the game master's own roll, and resolve the winner against the recorded snapshot.

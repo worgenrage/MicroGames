@@ -1844,7 +1844,7 @@ end)
 
 function API.StartRaidNumbering()
     local nextNumber = 1
-    local numMembers = GetNumGroupMembers()
+    local entries
 
     if API.GetSessionMode() ~= SESSION_MODE_SINGLE then
         return 0, "MULTI_RAID_NOT_READY"
@@ -1858,12 +1858,14 @@ function API.StartRaidNumbering()
     namesByNumber = {}
     assignedCount = 0
 
-    for raidIndex = 1, numMembers do
-        local name = GetRaidRosterInfo(raidIndex)
+    entries = GetCurrentRaidRosterEntries(GetLocalPlayerName())
 
-        if name then
-            numbersByName[name] = nextNumber
-            namesByNumber[nextNumber] = name
+    for index = 1, #entries do
+        local entry = entries[index]
+
+        if entry.name then
+            numbersByName[entry.name] = nextNumber
+            namesByNumber[nextNumber] = entry.name
             assignedCount = nextNumber
             nextNumber = nextNumber + 1
         end
