@@ -62,6 +62,7 @@
 - Reset should clear recorded assignments.
 - Number whispers must use the recorded snapshot from `StartRaidNumbering()`, not the current live raid roster.
 - `StartRaidNumbering()` must not send whispers automatically; sending numbers is a separate explicit UX action through `SendNumbers()`.
+- Single Raid recording must require the GM move step to be ready before `StartRaidNumbering()` creates the snapshot.
 - Number whispers require active numbering; stopped snapshots may be viewed but must not be used for sending.
 - Bulk number whispers must use the internal throttled send queue, not a tight loop of `SendChatMessage`.
 - The default number whisper text is `Your MG number is: XX`; UI-provided text should be saved through the API and use `XX` as the number placeholder.

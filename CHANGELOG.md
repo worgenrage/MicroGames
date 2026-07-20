@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.3
+
+- Added a Single Raid setup step to move the GM into the last used raid subgroup before recording the raid.
+- Locked `Record Raid` until the GM move is verified, so raid snapshots are recorded only after the live raid layout is prepared.
+
 ## 0.2.2
 
 - Added throttled send queues for bulk number whispers to avoid WoW chat spam limits in full raids.

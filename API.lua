@@ -78,6 +78,14 @@ local addonSendQueue = {
     label = nil,
     ticker = nil
 }
+local gmMoveState = {
+    status = "required",
+    message = "Move GM to last spot before recording raid.",
+    targetGroup = nil,
+    targetName = nil,
+    requestedAt = nil,
+    verifiedAt = nil
+}
 
 local function EnsureSettings()
     if type(MicroGamesDB) ~= "table" then
@@ -2041,6 +2049,118 @@ IsSnapshotPlayerOnline = function(name)
     return false
 end
 
+local function SetGMMoveState(status, message, targetGroup, targetName)
+    gmMoveState.status = status
+    gmMoveState.message = message
+    gmMoveState.targetGroup = targetGroup
+    gmMoveState.targetName = targetName
+
+    if status == "moving" then
+        gmMoveState.requestedAt = GetTimestamp()
+        gmMoveState.verifiedAt = nil
+    elseif status == "ready" then
+        gmMoveState.verifiedAt = GetTimestamp()
+    elseif status == "required" or status == "failed" then
+        gmMoveState.verifiedAt = nil
+    end
+end
+
+local function FindLiveRaidLayout()
+    local entries = {}
+    local gmName = GetLocalPlayerName()
+    local gmIndex = nil
+    local gmSubgroup = nil
+    local targetGroup = nil
+    local targetMember = nil
+
+    if not IsInRaid or not IsInRaid() then
+        return nil, "NOT_IN_RAID"
+    end
+
+    for raidIndex = 1, MAX_RAID_MEMBERS do
+        local name, rank, subgroup, _, _, _, _, online = GetRaidRosterInfo(raidIndex)
+
+        if name and subgroup then
+            local entry = {
+                index = raidIndex,
+                name = name,
+                rank = rank,
+                subgroup = subgroup,
+                online = online and true or false
+            }
+
+            entries[#entries + 1] = entry
+
+            if NamesMatch(name, gmName) then
+                gmIndex = raidIndex
+                gmSubgroup = subgroup
+            end
+
+            if not targetGroup or subgroup > targetGroup then
+                targetGroup = subgroup
+                targetMember = entry
+            elseif subgroup == targetGroup and (not targetMember or raidIndex > targetMember.index) then
+                targetMember = entry
+            end
+        end
+    end
+
+    if #entries <= 0 then
+        return nil, "RAID_ROSTER_UNAVAILABLE"
+    end
+
+    if not gmIndex then
+        return nil, "PLAYER_NOT_FOUND"
+    end
+
+    return {
+        entries = entries,
+        gmName = gmName,
+        gmIndex = gmIndex,
+        gmSubgroup = gmSubgroup,
+        targetGroup = targetGroup,
+        targetMember = targetMember
+    }
+end
+
+local function VerifyPendingGMMove()
+    local layout
+    local reason
+
+    if gmMoveState.status ~= "moving" then
+        return false
+    end
+
+    layout, reason = FindLiveRaidLayout()
+
+    if not layout then
+        SetGMMoveState("failed", "Cannot verify GM move: " .. tostring(reason) .. ".")
+        return false
+    end
+
+    if layout.gmSubgroup == gmMoveState.targetGroup then
+        SetGMMoveState("ready", "GM moved to subgroup " .. tostring(layout.gmSubgroup) .. ". Record Raid is now available.", layout.gmSubgroup)
+        return true
+    end
+
+    SetGMMoveState("failed", "GM move was not applied. Try again before recording raid.", gmMoveState.targetGroup)
+    return false
+end
+
+local function MarkGMMoveRequiredAfterRosterChange()
+    if API.GetSessionMode() ~= SESSION_MODE_SINGLE then
+        return
+    end
+
+    if assignmentActive or API.HasActiveGameSession() then
+        return
+    end
+
+    if gmMoveState.status == "ready" then
+        SetGMMoveState("required", "Raid roster changed. Move GM again before recording raid.")
+    end
+end
+
 local function HandleSystemMessage(message)
     local roller, roll, minimum, maximum
     local playerName
@@ -2114,12 +2234,118 @@ eventFrame:SetScript("OnEvent", function(self, event, message, payload, channel,
         HandleSystemMessage(message)
     elseif event == "GROUP_ROSTER_UPDATE" then
         MarkAssistantRosterStale()
+        if not VerifyPendingGMMove() then
+            MarkGMMoveRequiredAfterRosterChange()
+        end
+
+        if addon.UI and addon.UI.Refresh then
+            addon.UI.Refresh()
+        end
     elseif event == "CHAT_MSG_ADDON" and message == ADDON_MESSAGE_PREFIX then
         if not HandleMultiRaidMessage(payload, sender) then
             HandleMonitoringMessage(payload, sender)
         end
     end
 end)
+
+function API.GetGMMoveView()
+    return {
+        status = gmMoveState.status,
+        message = gmMoveState.message,
+        targetGroup = gmMoveState.targetGroup,
+        targetName = gmMoveState.targetName,
+        requestedAt = gmMoveState.requestedAt,
+        verifiedAt = gmMoveState.verifiedAt,
+        ready = gmMoveState.status == "ready"
+    }
+end
+
+function API.IsGMMoveReady()
+    return gmMoveState.status == "ready"
+end
+
+function API.CanRecordRaid()
+    return API.GetSessionMode() == SESSION_MODE_SINGLE
+        and API.CanModifyRoster()
+        and API.IsGMMoveReady()
+end
+
+function API.MoveGMToLastSpot()
+    local layout
+    local reason
+    local target
+
+    if API.GetSessionMode() ~= SESSION_MODE_SINGLE then
+        SetGMMoveState("failed", "Cannot move GM: Single Raid mode required.")
+        return false, "MULTI_RAID_NOT_READY"
+    end
+
+    if not API.CanModifyRoster() then
+        SetGMMoveState("failed", "Cannot move GM: setup is locked.")
+        return false, "ROSTER_LOCKED"
+    end
+
+    if InCombatLockdown and InCombatLockdown() then
+        SetGMMoveState("failed", "Cannot move GM: combat lockdown.")
+        return false, "COMBAT_LOCKDOWN"
+    end
+
+    if not SwapRaidSubgroup then
+        SetGMMoveState("failed", "Cannot move GM: raid swap API unavailable.")
+        return false, "RAID_SWAP_UNAVAILABLE"
+    end
+
+    if not (UnitIsGroupLeader and UnitIsGroupLeader("player"))
+        and not (UnitIsGroupAssistant and UnitIsGroupAssistant("player"))
+        and not (UnitIsRaidOfficer and UnitIsRaidOfficer("player"))
+        and not (IsRaidLeader and IsRaidLeader())
+        and not (IsRaidOfficer and IsRaidOfficer())
+    then
+        SetGMMoveState("failed", "Cannot move GM: raid leader or assistant required.")
+        return false, "RAID_PERMISSION_REQUIRED"
+    end
+
+    layout, reason = FindLiveRaidLayout()
+
+    if not layout then
+        SetGMMoveState("failed", "Cannot move GM: " .. tostring(reason) .. ".")
+        return false, reason
+    end
+
+    target = layout.targetMember
+
+    if not target then
+        SetGMMoveState("failed", "Cannot move GM: target member not found.")
+        return false, "TARGET_MEMBER_NOT_FOUND"
+    end
+
+    if layout.gmSubgroup == layout.targetGroup then
+        if layout.gmIndex == target.index then
+            SetGMMoveState("ready", "GM already appears last in subgroup " .. tostring(layout.targetGroup) .. ". Record Raid is now available.", layout.targetGroup)
+            return true, "GM_ALREADY_LAST", layout.targetGroup
+        end
+
+        SetGMMoveState("ready", "GM is already in the last used subgroup " .. tostring(layout.targetGroup) .. ". Record Raid is now available.", layout.targetGroup)
+        return true, "GM_ALREADY_LAST_GROUP", layout.targetGroup
+    end
+
+    SetGMMoveState("moving", "Swapping GM with " .. tostring(target.name) .. " in subgroup " .. tostring(layout.targetGroup) .. "...", layout.targetGroup, target.name)
+    SwapRaidSubgroup(layout.gmIndex, target.index)
+
+    if C_Timer and C_Timer.After then
+        C_Timer.After(2, function()
+            if gmMoveState.status == "moving" then
+                VerifyPendingGMMove()
+
+                if addon.UI and addon.UI.Refresh then
+                    addon.UI.Refresh()
+                end
+            end
+        end)
+    end
+
+    return true, "GM_MOVE_STARTED", layout.targetGroup
+end
 
 function API.StartRaidNumbering()
     local nextNumber = 1
@@ -2131,6 +2357,10 @@ function API.StartRaidNumbering()
 
     if not API.CanModifyRoster() then
         return 0, "ROSTER_LOCKED"
+    end
+
+    if not API.IsGMMoveReady() then
+        return 0, "GM_MOVE_REQUIRED"
     end
 
     numbersByName = {}
@@ -2167,6 +2397,7 @@ function API.StopRaidNumbering()
     end
 
     assignmentActive = false
+    SetGMMoveState("required", "Move GM to last spot before recording raid.")
 
     return true, "ROSTER_STOPPED"
 end
@@ -2194,6 +2425,7 @@ function API.ResetRaidNumbering()
     lastInvalidRollNumber = nil
     lastInvalidRollName = nil
     lastInvalidRollReason = nil
+    SetGMMoveState("required", "Move GM to last spot before recording raid.")
     PersistActiveSessionState()
     BroadcastMonitoringState("ROSTER_CLEARED")
 
@@ -2220,6 +2452,7 @@ function API.ResetAllData()
     lastInvalidRollNumber = nil
     lastInvalidRollName = nil
     lastInvalidRollReason = nil
+    SetGMMoveState("required", "Move GM to last spot before recording raid.")
     MicroGamesDB = {}
     EnsureSettings()
     EnsureRewardTemplates()
@@ -3315,7 +3548,6 @@ local function ResolveMultiRaidWinner(number)
 end
 
 HandleMultiRaidRollResult = function(roundNumber, roll, rollMax)
-    local state = EnsureMultiRaidState()
     local winner = ResolveMultiRaidWinner(roll)
     local resultMessage = "Coordinator rolled " .. tostring(roll) .. " (1-" .. tostring(rollMax) .. ")"
 
@@ -3739,6 +3971,10 @@ function API.StartGameSession()
         return false, "ACTIVE_SESSION_EXISTS"
     end
 
+    if not assignmentActive and not API.IsGMMoveReady() then
+        return false, "GM_MOVE_REQUIRED"
+    end
+
     if not assignmentActive or assignedCount <= 0 then
         API.StartRaidNumbering()
     end
@@ -3810,6 +4046,7 @@ function API.StopGameSession()
     lastInvalidRollNumber = nil
     lastInvalidRollName = nil
     lastInvalidRollReason = nil
+    SetGMMoveState("required", "Move GM to last spot before recording raid.")
 
     return true, "GAME_STOPPED"
 end

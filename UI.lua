@@ -76,6 +76,7 @@ local resetAllConfirmButton
 local startGameButton
 local stopGameButton
 local roundRollButton
+local rosterGMMoveButton
 local rosterStartButton
 local rosterSendButton
 local rosterResetButton
@@ -158,7 +159,7 @@ end
 local function BuildSendQueueStatusText()
     local view = API.GetSendQueueView()
     local chat = view.chat or {}
-    local addon = view.addon or {}
+    local addonQueue = view.addon or {}
     local parts = {}
 
     if chat.active then
@@ -168,10 +169,10 @@ local function BuildSendQueueStatusText()
             .. " sent"
     end
 
-    if addon.active then
-        parts[#parts + 1] = tostring(addon.label or "Addon")
-            .. ": " .. tostring(addon.sent or 0)
-            .. "/" .. tostring(addon.total or 0)
+    if addonQueue.active then
+        parts[#parts + 1] = tostring(addonQueue.label or "Addon")
+            .. ": " .. tostring(addonQueue.sent or 0)
+            .. "/" .. tostring(addonQueue.total or 0)
             .. " sent"
     end
 
@@ -277,6 +278,7 @@ local function UpdateSummary()
     local sendQueueView = API.GetSendQueueView()
     local sendQueueActive = (sendQueueView.chat and sendQueueView.chat.active)
         or (sendQueueView.addon and sendQueueView.addon.active)
+    local gmMoveView = API.GetGMMoveView()
 
     if activeText then
         if multiCoordinatorMode then
@@ -316,7 +318,8 @@ local function UpdateSummary()
 
     SetButtonEnabled(startGameButton, singleRaidMode and not session.active)
     SetButtonEnabled(stopGameButton, session.active and not API.HasPendingRoll())
-    SetButtonEnabled(rosterStartButton, singleRaidMode and canModifyRoster)
+    SetButtonEnabled(rosterGMMoveButton, singleRaidMode and canModifyRoster and not API.HasRaidNumbers() and gmMoveView.status ~= "moving")
+    SetButtonEnabled(rosterStartButton, singleRaidMode and API.CanRecordRaid())
     SetButtonEnabled(rosterSendButton, singleRaidMode and canModifyRoster and API.HasRaidNumbers() and count > 0 and not sendQueueActive)
     SetButtonEnabled(rosterResetButton, singleRaidMode and canModifyRoster)
     SetButtonEnabled(roundRollButton, (singleRaidMode and session.active and count > 0 and not API.HasPendingRoll() and not invalidRollPending)
@@ -413,6 +416,7 @@ local function RefreshRoster()
     local sendQueueView = API.GetSendQueueView()
     local sendQueueActive = (sendQueueView.chat and sendQueueView.chat.active)
         or (sendQueueView.addon and sendQueueView.addon.active)
+    local gmMoveView = API.GetGMMoveView()
 
     if multiCoordinatorFrame then
         if mode == "multi_coordinator" then
@@ -438,6 +442,8 @@ local function RefreshRoster()
         else
             SetMultiSetupStatus(queueText)
         end
+    elseif mode == "single" and not API.HasRaidNumbers() and gmMoveView.message then
+        SetRosterStatus(gmMoveView.message)
     end
 
     if rosterPage > totalPages then
@@ -1282,17 +1288,44 @@ local function CreateRosterPage(parent)
 
     CreateLabel(page, "Setup", 0, -382)
 
-    rosterStartButton = CreateButton(page, "Record Raid", 0, -406, 126, 24, function()
+    rosterGMMoveButton = CreateButton(page, "Move GM to Last Spot", 0, -406, 176, 24, function()
         if not API.CanModifyRoster() then
             SetRosterStatus("Setup is locked while a game session is active or a roll is pending.")
             return
         end
 
-        local count = API.StartRaidNumbering()
+        local ok, result, targetGroup = API.MoveGMToLastSpot()
+        local view = API.GetGMMoveView()
+
+        if ok then
+            SetRosterStatus(view.message or ("GM move started for subgroup " .. tostring(targetGroup or "-") .. "."))
+        else
+            SetRosterStatus(view.message or ("Cannot move GM: " .. tostring(result)))
+        end
+
+        RefreshAll()
+    end)
+
+    rosterStartButton = CreateButton(page, "Record Raid", 192, -406, 126, 24, function()
+        if not API.CanModifyRoster() then
+            SetRosterStatus("Setup is locked while a game session is active or a roll is pending.")
+            return
+        end
+
+        if not API.CanRecordRaid() then
+            local view = API.GetGMMoveView()
+
+            SetRosterStatus(view.message or "Move GM to last spot before recording raid.")
+            return
+        end
+
+        local count, reason = API.StartRaidNumbering()
         rosterPage = 1
 
         if count > 0 then
             SetRosterStatus("Raid recorded. Players: " .. tostring(count) .. ".")
+        elseif reason == "GM_MOVE_REQUIRED" then
+            SetRosterStatus("Move GM to last spot before recording raid.")
         else
             SetRosterStatus("No raid members recorded. Join a raid first.")
         end
@@ -1300,7 +1333,19 @@ local function CreateRosterPage(parent)
         RefreshAll()
     end)
 
-    rosterSendButton = CreateButton(page, "Send Numbers (0)", 142, -406, 160, 24, function()
+    rosterResetButton = CreateButton(page, "Clear Raid", 318, -406, 92, 24, function()
+        if not API.CanModifyRoster() then
+            SetRosterStatus("Setup is locked while a game session is active or a roll is pending.")
+            return
+        end
+
+        API.ResetRaidNumbering()
+        rosterPage = 1
+        SetRosterStatus("Recorded raid and rounds cleared.")
+        RefreshAll()
+    end)
+
+    rosterSendButton = CreateButton(page, "Send Numbers (0)", 0, -434, 176, 24, function()
         if not API.CanModifyRoster() then
             SetRosterStatus("Setup is locked while a game session is active or a roll is pending.")
             return
@@ -1324,19 +1369,7 @@ local function CreateRosterPage(parent)
         RefreshAll()
     end)
 
-    rosterResetButton = CreateButton(page, "Clear Raid", 318, -406, 92, 24, function()
-        if not API.CanModifyRoster() then
-            SetRosterStatus("Setup is locked while a game session is active or a roll is pending.")
-            return
-        end
-
-        API.ResetRaidNumbering()
-        rosterPage = 1
-        SetRosterStatus("Recorded raid and rounds cleared.")
-        RefreshAll()
-    end)
-
-    rosterStatusText = CreateValue(page, 0, -444, 410)
+    rosterStatusText = CreateValue(page, 0, -472, 410)
     rosterStatusText:SetText("Setup ready.")
 
     multiCoordinatorFrame = CreateFrame("Frame", nil, page)

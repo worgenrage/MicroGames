@@ -62,6 +62,9 @@ Main API:
 
 ```lua
 addon.API.StartRaidNumbering()
+addon.API.MoveGMToLastSpot()
+addon.API.GetGMMoveView()
+addon.API.CanRecordRaid()
 addon.API.StopRaidNumbering()
 addon.API.ResetRaidNumbering()
 addon.API.CountRaidNumbers()
@@ -75,6 +78,7 @@ addon.API.SendNumberWhisperToName(name)
 Number whispers require active numbering. `StopRaidNumbering()` keeps the recorded list visible but disables number whisper sending until numbering is started again.
 Bulk number whispers are sent through a throttled queue instead of one frame burst sending.
 In Single Raid mode, the local player running the addon is never assigned an MG number.
+Before Single Raid recording, `MoveGMToLastSpot()` scans the live raid layout and swaps the GM into the last used raid subgroup. `Record Raid` stays locked until that move is verified.
 
 Default number whisper:
 
