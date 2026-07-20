@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.2
+
+- Added throttled send queues for bulk number whispers to avoid WoW chat spam limits in full raids.
+- Added throttled addon-message queueing for chunked multi-raid roster and assignment sync.
+- Added send queue progress reporting for Setup and Multi Raid setup status text.
+- Hardened addon-message result handling for throttle/error enum responses.
+- Sanitized outgoing visible chat text before sending through WoW chat APIs.
+
 ## 0.2.1
 
 - Fixed Single Raid roster recording so the local player running the addon is excluded from MG number assignment.

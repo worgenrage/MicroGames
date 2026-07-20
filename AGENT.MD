@@ -63,6 +63,7 @@
 - Number whispers must use the recorded snapshot from `StartRaidNumbering()`, not the current live raid roster.
 - `StartRaidNumbering()` must not send whispers automatically; sending numbers is a separate explicit UX action through `SendNumbers()`.
 - Number whispers require active numbering; stopped snapshots may be viewed but must not be used for sending.
+- Bulk number whispers must use the internal throttled send queue, not a tight loop of `SendChatMessage`.
 - The default number whisper text is `Your MG number is: XX`; UI-provided text should be saved through the API and use `XX` as the number placeholder.
 - Number whisper text must persist through `MicroGamesDB.numberWhisperText`.
 - The current scope is game-master-only, so addon-message synchronization is not required yet.
@@ -140,6 +141,7 @@
 - If the Assistant's local raid roster changes after recording, mark the local roster stale and require a new record before sending.
 - The Coordinator records its own main raid separately, assigns one global number range, and sends Assistant ranges through addon-message whispers.
 - The Coordinator can dispatch number whispers after global assignment: local main-raid players are whispered by the Coordinator, Assistant raid players are whispered by their accepted Assistant.
+- Chunked Multi Raid roster and assignment sync should use the internal addon-message queue to avoid per-prefix addon-message throttling.
 - Multi Raid round rolls and rerolls require an active Multi Raid game session started by the Coordinator.
 - Active Multi Raid games must lock roster recording, roster sending, and global assignment mutation.
 - Completed Multi Raid games are stored in the shared `MicroGamesDB.history` list with `sessionType = "multi"`.

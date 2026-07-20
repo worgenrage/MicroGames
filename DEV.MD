@@ -73,6 +73,7 @@ addon.API.SendNumberWhisperToName(name)
 ```
 
 Number whispers require active numbering. `StopRaidNumbering()` keeps the recorded list visible but disables number whisper sending until numbering is started again.
+Bulk number whispers are sent through a throttled queue instead of one frame burst sending.
 In Single Raid mode, the local player running the addon is never assigned an MG number.
 
 Default number whisper:
@@ -359,6 +360,7 @@ Multi-raid roster sync is Assistant-owned:
 - The Coordinator assigns global numbers only after its own roster is recorded and accepted Assistant rosters are received.
 - Assignments are sent to Assistants as chunked addon-message whispers.
 - The Coordinator can dispatch global number whispers after assignment; the Coordinator whispers main-raid players and Assistants whisper their own assigned local players.
+- Bulk visible whispers and chunked roster/assignment addon messages are throttled through send queues to avoid WoW chat and addon-message rate limits.
 - The Coordinator must start the Multi Raid game session before multi round rolls or rerolls can run.
 - Active multi games lock roster recording, roster sending, and global assignment changes.
 - Coordinator multi-raid round announcements and roll results are relayed by Assistants into their own raid chat.
@@ -439,4 +441,4 @@ git diff --check
 ## Known Next Steps
 
 - Add UI disable states for individual Multi Raid setup buttons.
-- Consider chat throttling for mass whisper sending.
+- Consider embedding ChatThrottleLib later if the internal queues need more adaptive traffic shaping.

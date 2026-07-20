@@ -34,6 +34,8 @@ local RecordMultiRaidRollResult
 local UpdateMultiRaidWinnerVerification
 local EnsureMultiRaidActiveHistorySession
 local RecordMultiRaidSessionRound
+local QueueNumberWhisper
+local QueueMultiRaidWhisper
 local HandleMultiRaidRollResult
 local defaultRewardTemplates = {
     "10 GOLD!",
@@ -50,12 +52,32 @@ local MONITORING_REWARD_TEXT_LIMIT = 16
 local REWARD_TEMPLATE_TEXT_LIMIT = 80
 local MULTI_RAID_LOG_LIMIT = 8
 local MULTI_RAID_MAX_ASSISTANTS = 4
+local CHAT_SEND_INTERVAL = 1.25
+local ADDON_SEND_INTERVAL = 1
 local monitoringLog = {}
 local monitoringLastSnapshot = nil
 local monitoringObservedSender = nil
 local monitoringBroadcastEnabled = false
 local monitoringBroadcastTicker = nil
 local monitoringPrefixRegistered = false
+local chatSendQueue = {
+    items = {},
+    total = 0,
+    sent = 0,
+    failed = 0,
+    active = false,
+    label = nil,
+    ticker = nil
+}
+local addonSendQueue = {
+    items = {},
+    total = 0,
+    sent = 0,
+    failed = 0,
+    active = false,
+    label = nil,
+    ticker = nil
+}
 
 local function EnsureSettings()
     if type(MicroGamesDB) ~= "table" then
@@ -186,6 +208,19 @@ local function SanitizeProtocolValue(value, maxLength)
     return text
 end
 
+local function SanitizeChatText(value)
+    local text = tostring(value or "")
+
+    text = string.gsub(text, "[\n\r]", " ")
+    text = string.gsub(text, "|", " ")
+
+    if string.len(text) > 255 then
+        text = string.sub(text, 1, 255)
+    end
+
+    return text
+end
+
 local function GetLocalPlayerName()
     local name, realm
 
@@ -213,6 +248,56 @@ local function AddMultiRaidLog(message)
     while #state.log > MULTI_RAID_LOG_LIMIT do
         table.remove(state.log)
     end
+end
+
+local function RefreshUI()
+    if addon.UI and addon.UI.Refresh then
+        addon.UI.Refresh()
+    end
+end
+
+local function GetSendAddonMessageReason(result)
+    local addonResult = Enum and Enum.SendAddonMessageResult
+
+    if result == false then
+        return "SEND_FAILED"
+    end
+
+    if result == true or result == nil then
+        return nil
+    end
+
+    if addonResult then
+        if result == addonResult.Success then
+            return nil
+        elseif result == addonResult.InvalidPrefix then
+            return "INVALID_PREFIX"
+        elseif result == addonResult.InvalidMessage then
+            return "INVALID_MESSAGE"
+        elseif result == addonResult.AddonMessageThrottle then
+            return "ADDON_MESSAGE_THROTTLE"
+        elseif result == addonResult.InvalidChatType then
+            return "INVALID_CHAT_TYPE"
+        elseif result == addonResult.NotInGroup then
+            return "NOT_IN_GROUP"
+        elseif result == addonResult.TargetRequired then
+            return "TARGET_REQUIRED"
+        elseif result == addonResult.InvalidChannel then
+            return "INVALID_CHANNEL"
+        elseif result == addonResult.ChannelThrottle then
+            return "CHANNEL_THROTTLE"
+        elseif result == addonResult.GeneralError then
+            return "GENERAL_ERROR"
+        elseif result == addonResult.TargetOffline then
+            return "TARGET_OFFLINE"
+        end
+    elseif result == 0 then
+        return nil
+    elseif result == 3 then
+        return "ADDON_MESSAGE_THROTTLE"
+    end
+
+    return "SEND_RESULT_" .. tostring(result)
 end
 
 local function GetCurrentRaidRosterEntries(excludedName)
@@ -355,8 +440,10 @@ SendMultiRaidWhisper = function(messageType, target, sessionId, raidId, value1, 
 
     result = C_ChatInfo.SendAddonMessage(ADDON_MESSAGE_PREFIX, payload, "WHISPER", target)
 
-    if result == false then
-        return false, "SEND_FAILED"
+    local reason = GetSendAddonMessageReason(result)
+
+    if reason then
+        return false, reason
     end
 
     return true, seq
@@ -1029,27 +1116,46 @@ end
 local function SendAssistantNumberWhispers()
     local state = EnsureMultiRaidState()
     local roster = state.assignedRoster or {}
-    local sentCount = 0
+    local queuedCount = 0
 
     if #roster <= 0 or state.assignmentStatus ~= "received" then
         return false, "ASSIGNMENT_REQUIRED"
     end
 
+    if chatSendQueue.active or #chatSendQueue.items > 0 then
+        return false, "SEND_QUEUE_ACTIVE"
+    end
+
+    ResetChatQueue("Assistant number whispers", function(sent, failed)
+        state.numberWhisperStatus = failed > 0 and "failed" or "sent"
+        state.numberWhisperSentAt = GetTimestamp()
+        state.numberWhisperSentCount = sent
+        state.numberWhisperFailedCount = failed
+
+        if failed > 0 then
+            SendMultiRaidWhisper("NUMBERS_FAILED", state.acceptedCoordinator, state.sessionId, state.assistantRaidId, tostring(failed))
+            AddMultiRaidLog("Number whispers completed with failures: " .. tostring(failed) .. ".")
+        else
+            SendMultiRaidWhisper("NUMBERS_SENT", state.acceptedCoordinator, state.sessionId, state.assistantRaidId, tostring(sent))
+            AddMultiRaidLog("Number whispers sent: " .. tostring(sent) .. ".")
+        end
+    end)
+
     for index = 1, #roster do
         local entry = roster[index]
 
         if entry and entry.name and entry.number then
-            SendWhisper(BuildNumberMessage(entry.number), entry.name)
-            sentCount = sentCount + 1
+            QueueNumberWhisper(entry.name, BuildNumberMessage(entry.number), "Assistant number whispers")
+            queuedCount = queuedCount + 1
         end
     end
 
-    state.numberWhisperStatus = "sent"
-    state.numberWhisperSentAt = GetTimestamp()
-    state.numberWhisperSentCount = sentCount
-    AddMultiRaidLog("Number whispers sent: " .. tostring(sentCount) .. ".")
+    state.numberWhisperStatus = "sending"
+    state.numberWhisperQueuedAt = GetTimestamp()
+    state.numberWhisperQueuedCount = queuedCount
+    AddMultiRaidLog("Number whispers queued: " .. tostring(queuedCount) .. ".")
 
-    return true, sentCount
+    return true, queuedCount
 end
 
 local function HandleMultiRaidSendNumbers(message, sender)
@@ -1067,9 +1173,7 @@ local function HandleMultiRaidSendNumbers(message, sender)
 
     ok, result = SendAssistantNumberWhispers()
 
-    if ok then
-        SendMultiRaidWhisper("NUMBERS_SENT", sender, state.sessionId, state.assistantRaidId, tostring(result))
-    else
+    if not ok then
         SendMultiRaidWhisper("NUMBERS_FAILED", sender, state.sessionId, state.assistantRaidId, tostring(result))
         AddMultiRaidLog("Number whispers failed: " .. tostring(result) .. ".")
     end
@@ -1241,8 +1345,10 @@ local function SendMonitoringState(eventName)
 
     result = C_ChatInfo.SendAddonMessage(ADDON_MESSAGE_PREFIX, payload, channel)
 
-    if result == false then
-        return false, "SEND_FAILED"
+    local reason = GetSendAddonMessageReason(result)
+
+    if reason then
+        return false, reason
     end
 
     return true, channel
@@ -1662,23 +1768,196 @@ BuildNumberMessage = function(number)
 end
 
 SendWhisper = function(message, name)
-    C_ChatInfo.SendChatMessage(message, "WHISPER", nil, name)
+    local ok = pcall(C_ChatInfo.SendChatMessage, SanitizeChatText(message), "WHISPER", nil, name)
+
+    return ok
 end
 
 SendRaidMessage = function(message)
-    C_ChatInfo.SendChatMessage(message, "RAID")
+    C_ChatInfo.SendChatMessage(SanitizeChatText(message), "RAID")
 end
 
 local function SendRaidWarningMessage(message)
-    C_ChatInfo.SendChatMessage(message, "RAID_WARNING")
+    C_ChatInfo.SendChatMessage(SanitizeChatText(message), "RAID_WARNING")
 end
 
 local function SendSayMessage(message)
-    C_ChatInfo.SendChatMessage(message, "SAY")
+    C_ChatInfo.SendChatMessage(SanitizeChatText(message), "SAY")
 end
 
 local function SendYellMessage(message)
-    C_ChatInfo.SendChatMessage(message, "YELL")
+    C_ChatInfo.SendChatMessage(SanitizeChatText(message), "YELL")
+end
+
+local function StopQueueTicker(queue)
+    if queue.ticker and queue.ticker.Cancel then
+        queue.ticker:Cancel()
+    end
+
+    queue.ticker = nil
+    queue.active = false
+end
+
+local function FinishChatQueue()
+    local onComplete = chatSendQueue.onComplete
+    local label = chatSendQueue.label
+    local sent = chatSendQueue.sent
+    local failed = chatSendQueue.failed
+
+    StopQueueTicker(chatSendQueue)
+    chatSendQueue.label = label
+    chatSendQueue.onComplete = nil
+    chatSendQueue.completedAt = GetTimestamp()
+
+    if onComplete then
+        onComplete(sent, failed)
+    end
+
+    RefreshUI()
+end
+
+local function StartChatQueueTicker()
+    if chatSendQueue.ticker then
+        return
+    end
+
+    chatSendQueue.active = true
+    chatSendQueue.ticker = C_Timer.NewTicker(CHAT_SEND_INTERVAL, function()
+        local item = table.remove(chatSendQueue.items, 1)
+        local ok
+
+        if not item then
+            FinishChatQueue()
+            return
+        end
+
+        ok = SendWhisper(item.message, item.target)
+
+        if ok then
+            chatSendQueue.sent = chatSendQueue.sent + 1
+
+            if item.onSent then
+                item.onSent(item)
+            end
+        else
+            chatSendQueue.failed = chatSendQueue.failed + 1
+
+            if item.onFailed then
+                item.onFailed(item, "SEND_FAILED")
+            end
+        end
+
+        RefreshUI()
+    end)
+end
+
+QueueNumberWhisper = function(target, message, label, onSent, onFailed)
+    chatSendQueue.items[#chatSendQueue.items + 1] = {
+        target = target,
+        message = message,
+        onSent = onSent,
+        onFailed = onFailed
+    }
+    chatSendQueue.total = chatSendQueue.total + 1
+    chatSendQueue.label = label or chatSendQueue.label or "Number whispers"
+    chatSendQueue.completedAt = nil
+
+    StartChatQueueTicker()
+    RefreshUI()
+
+    return true, #chatSendQueue.items
+end
+
+local function ResetChatQueue(label, onComplete)
+    StopQueueTicker(chatSendQueue)
+    chatSendQueue.items = {}
+    chatSendQueue.total = 0
+    chatSendQueue.sent = 0
+    chatSendQueue.failed = 0
+    chatSendQueue.label = label
+    chatSendQueue.onComplete = onComplete
+    chatSendQueue.completedAt = nil
+end
+
+local function FinishAddonQueue()
+    StopQueueTicker(addonSendQueue)
+    addonSendQueue.completedAt = GetTimestamp()
+    RefreshUI()
+end
+
+local function StartAddonQueueTicker()
+    if addonSendQueue.ticker then
+        return
+    end
+
+    addonSendQueue.active = true
+    addonSendQueue.ticker = C_Timer.NewTicker(ADDON_SEND_INTERVAL, function()
+        local item = table.remove(addonSendQueue.items, 1)
+        local ok, result
+
+        if not item then
+            FinishAddonQueue()
+            return
+        end
+
+        ok, result = SendMultiRaidWhisper(
+            item.messageType,
+            item.target,
+            item.sessionId,
+            item.raidId,
+            item.value1,
+            item.value2
+        )
+
+        if ok then
+            addonSendQueue.sent = addonSendQueue.sent + 1
+
+            if item.onSent then
+                item.onSent(item)
+            end
+        elseif result == "ADDON_MESSAGE_THROTTLE" or result == "CHANNEL_THROTTLE" then
+            item.retryCount = (item.retryCount or 0) + 1
+
+            if item.retryCount <= 10 then
+                table.insert(addonSendQueue.items, 1, item)
+            else
+                addonSendQueue.failed = addonSendQueue.failed + 1
+
+                if item.onFailed then
+                    item.onFailed(item, result)
+                end
+            end
+        else
+            addonSendQueue.failed = addonSendQueue.failed + 1
+
+            if item.onFailed then
+                item.onFailed(item, result)
+            end
+        end
+
+        RefreshUI()
+    end)
+end
+
+QueueMultiRaidWhisper = function(messageType, target, sessionId, raidId, value1, value2, label, onSent, onFailed)
+    addonSendQueue.items[#addonSendQueue.items + 1] = {
+        messageType = messageType,
+        target = target,
+        sessionId = sessionId,
+        raidId = raidId,
+        value1 = value1,
+        value2 = value2,
+        onSent = onSent,
+        onFailed = onFailed
+    }
+    addonSendQueue.total = addonSendQueue.total + 1
+    addonSendQueue.label = label or addonSendQueue.label or "Addon messages"
+    addonSendQueue.completedAt = nil
+
+    StartAddonQueueTicker()
+    RefreshUI()
+
+    return true, #addonSendQueue.items
 end
 
 local function ScheduleRollCountdown(roundNumber, rollMax, delay)
@@ -2029,22 +2308,28 @@ function API.SendNumberWhisperToName(name)
 end
 
 function API.SendNumbers()
-    local sentCount = 0
+    local queuedCount = 0
 
     if not assignmentActive then
-        return 0
+        return false, "NO_ACTIVE_NUMBERING"
     end
+
+    if chatSendQueue.active or #chatSendQueue.items > 0 then
+        return false, "SEND_QUEUE_ACTIVE"
+    end
+
+    ResetChatQueue("Single Raid number whispers")
 
     for number = 1, assignedCount do
         local name = namesByNumber[number]
 
         if name then
-            SendWhisper(BuildNumberMessage(number), name)
-            sentCount = sentCount + 1
+            QueueNumberWhisper(name, BuildNumberMessage(number), "Single Raid number whispers")
+            queuedCount = queuedCount + 1
         end
     end
 
-    return sentCount
+    return true, queuedCount
 end
 
 function API.GetCurrentRound()
@@ -2251,6 +2536,41 @@ function API.GetMultiRaidView()
     }
 end
 
+function API.GetSendQueueView()
+    return {
+        chat = {
+            active = chatSendQueue.active,
+            label = chatSendQueue.label,
+            total = chatSendQueue.total,
+            sent = chatSendQueue.sent,
+            failed = chatSendQueue.failed,
+            pending = #chatSendQueue.items,
+            completedAt = chatSendQueue.completedAt
+        },
+        addon = {
+            active = addonSendQueue.active,
+            label = addonSendQueue.label,
+            total = addonSendQueue.total,
+            sent = addonSendQueue.sent,
+            failed = addonSendQueue.failed,
+            pending = #addonSendQueue.items,
+            completedAt = addonSendQueue.completedAt
+        }
+    }
+end
+
+function API.CancelSendQueues()
+    StopQueueTicker(chatSendQueue)
+    StopQueueTicker(addonSendQueue)
+    chatSendQueue.items = {}
+    addonSendQueue.items = {}
+    chatSendQueue.active = false
+    addonSendQueue.active = false
+    RefreshUI()
+
+    return true, "SEND_QUEUES_CANCELLED"
+end
+
 function API.AddMultiRaidAssistant(name)
     local state
     local targetName = NormalizePlayerName(name)
@@ -2261,15 +2581,15 @@ function API.AddMultiRaidAssistant(name)
         return false, "NOT_COORDINATOR_MODE"
     end
 
-    if API.HasActiveGameSession() or state.gameStatus == "active" or API.HasPendingRoll() then
-        return false, "SESSION_MODE_LOCKED"
-    end
-
     if targetName == "" then
         return false, "ASSISTANT_NAME_REQUIRED"
     end
 
     state = EnsureCoordinatorSession()
+
+    if API.HasActiveGameSession() or state.gameStatus == "active" or API.HasPendingRoll() then
+        return false, "SESSION_MODE_LOCKED"
+    end
 
     if #state.assistants >= MULTI_RAID_MAX_ASSISTANTS then
         return false, "ASSISTANT_LIMIT_REACHED"
@@ -2427,38 +2747,34 @@ local function SendAssistantAssignment(state, assistant)
     local target = assistant.senderName or assistant.targetName
     local roster = assistant.roster or {}
     local rangeText
-    local ok, result
 
     if not assistant.rangeStart or not assistant.rangeEnd then
         return false, "ASSISTANT_NOT_ASSIGNED"
     end
 
     rangeText = tostring(assistant.rangeStart) .. "-" .. tostring(assistant.rangeEnd)
-    ok, result = SendMultiRaidWhisper("ASSIGN_BEGIN", target, state.sessionId, assistant.raidId, rangeText, tostring(#roster))
-
-    if not ok then
-        return false, result
-    end
+    QueueMultiRaidWhisper("ASSIGN_BEGIN", target, state.sessionId, assistant.raidId, rangeText, tostring(#roster), "Assistant assignments")
 
     for index = 1, #roster do
         local number = assistant.rangeStart + index - 1
 
-        ok, result = SendMultiRaidWhisper("ASSIGN_ROW", target, state.sessionId, assistant.raidId, tostring(number), roster[index].name)
-
-        if not ok then
-            return false, result
-        end
+        QueueMultiRaidWhisper("ASSIGN_ROW", target, state.sessionId, assistant.raidId, tostring(number), roster[index].name, "Assistant assignments")
     end
 
-    ok, result = SendMultiRaidWhisper("ASSIGN_END", target, state.sessionId, assistant.raidId, rangeText, tostring(#roster))
-
-    if ok then
+    QueueMultiRaidWhisper("ASSIGN_END", target, state.sessionId, assistant.raidId, rangeText, tostring(#roster), "Assistant assignments", function()
         assistant.assignmentStatus = "sent"
         assistant.assignmentSentAt = GetTimestamp()
-        return true, "ASSIGN_SENT"
-    end
+        AddMultiRaidLog("Assignment sent to " .. tostring(target) .. ".")
+    end, function(item, reason)
+        assistant.assignmentStatus = "send_failed"
+        assistant.assignmentError = reason
+        AddMultiRaidLog("Assignment send failed for " .. tostring(target) .. ": " .. tostring(reason) .. ".")
+    end)
 
-    return false, result
+    assistant.assignmentStatus = "queued"
+    assistant.assignmentQueuedAt = GetTimestamp()
+
+    return true, "ASSIGN_QUEUED"
 end
 
 function API.AssignMultiRaidGlobalNumbers()
@@ -2474,6 +2790,10 @@ function API.AssignMultiRaidGlobalNumbers()
 
     if state.gameStatus == "active" or API.HasPendingRoll() then
         return false, "SESSION_MODE_LOCKED"
+    end
+
+    if addonSendQueue.active or #addonSendQueue.items > 0 then
+        return false, "SEND_QUEUE_ACTIVE"
     end
 
     if #coordinatorRoster <= 0 then
@@ -2492,6 +2812,13 @@ function API.AssignMultiRaidGlobalNumbers()
     state.globalNamesByNumber = {}
     state.globalNumbersByName = {}
     state.raidRanges = {}
+    StopQueueTicker(addonSendQueue)
+    addonSendQueue.items = {}
+    addonSendQueue.total = 0
+    addonSendQueue.sent = 0
+    addonSendQueue.failed = 0
+    addonSendQueue.label = "Assistant assignments"
+    addonSendQueue.completedAt = nil
 
     state.raidRanges[1] = {
         raidId = 1,
@@ -2597,7 +2924,6 @@ function API.SendMultiRaidRoster()
     local state = EnsureMultiRaidState()
     local target = state.acceptedCoordinator
     local roster = state.localRoster or {}
-    local ok, result
 
     if API.GetSessionMode() ~= SESSION_MODE_MULTI_ASSISTANT then
         return false, "NOT_ASSISTANT_MODE"
@@ -2621,30 +2947,37 @@ function API.SendMultiRaidRoster()
         return false, "ROSTER_NOT_RECORDED"
     end
 
-    ok, result = SendMultiRaidWhisper("ROSTER_BEGIN", target, state.sessionId, state.assistantRaidId, tostring(#roster), tostring(state.rosterVersion or 0))
-
-    if not ok then
-        return false, result
+    if addonSendQueue.active or #addonSendQueue.items > 0 then
+        return false, "SEND_QUEUE_ACTIVE"
     end
+
+    StopQueueTicker(addonSendQueue)
+    addonSendQueue.items = {}
+    addonSendQueue.total = 0
+    addonSendQueue.sent = 0
+    addonSendQueue.failed = 0
+    addonSendQueue.label = "Assistant roster"
+    addonSendQueue.completedAt = nil
+
+    QueueMultiRaidWhisper("ROSTER_BEGIN", target, state.sessionId, state.assistantRaidId, tostring(#roster), tostring(state.rosterVersion or 0), "Assistant roster")
 
     for index = 1, #roster do
-        ok, result = SendMultiRaidWhisper("ROSTER_ROW", target, state.sessionId, state.assistantRaidId, tostring(index), roster[index].name)
-
-        if not ok then
-            AddMultiRaidLog("Roster send failed at row " .. tostring(index) .. ": " .. tostring(result) .. ".")
-            return false, result
-        end
+        QueueMultiRaidWhisper("ROSTER_ROW", target, state.sessionId, state.assistantRaidId, tostring(index), roster[index].name, "Assistant roster")
     end
 
-    ok, result = SendMultiRaidWhisper("ROSTER_END", target, state.sessionId, state.assistantRaidId, tostring(#roster), tostring(state.rosterVersion or 0))
+    QueueMultiRaidWhisper("ROSTER_END", target, state.sessionId, state.assistantRaidId, tostring(#roster), tostring(state.rosterVersion or 0), "Assistant roster", function()
+        state.localRosterStatus = "sent"
+        state.localRosterSentAt = GetTimestamp()
+        AddMultiRaidLog("Local roster sent: " .. tostring(#roster) .. " eligible.")
+    end, function(item, reason)
+        state.localRosterStatus = "send_failed"
+        state.localRosterError = reason
+        AddMultiRaidLog("Roster send failed: " .. tostring(reason) .. ".")
+    end)
 
-    if not ok then
-        return false, result
-    end
-
-    state.localRosterStatus = "sent"
-    state.localRosterSentAt = GetTimestamp()
-    AddMultiRaidLog("Local roster sent: " .. tostring(#roster) .. " eligible.")
+    state.localRosterStatus = "sending"
+    state.localRosterQueuedAt = GetTimestamp()
+    AddMultiRaidLog("Local roster queued: " .. tostring(#roster) .. " eligible.")
 
     return true, #roster
 end
@@ -2763,9 +3096,10 @@ end
 
 function API.SendMultiRaidNumbers()
     local state = EnsureMultiRaidState()
-    local sentCount = 0
+    local queuedCount = 0
     local assistantCommandCount = 0
     local lastError = nil
+    local hasLocalWhispers = false
 
     if API.GetSessionMode() ~= SESSION_MODE_MULTI_COORDINATOR then
         return false, "NOT_COORDINATOR_MODE"
@@ -2779,8 +3113,31 @@ function API.SendMultiRaidNumbers()
         local entry = state.globalAssignments[index]
 
         if entry and entry.raidId == 1 and entry.name and entry.number then
-            SendWhisper(BuildNumberMessage(entry.number), entry.name)
-            sentCount = sentCount + 1
+            hasLocalWhispers = true
+            break
+        end
+    end
+
+    if hasLocalWhispers then
+        if chatSendQueue.active or #chatSendQueue.items > 0 then
+            return false, "SEND_QUEUE_ACTIVE"
+        end
+
+        ResetChatQueue("Coordinator number whispers", function(sent, failed)
+            state.numberWhisperStatus = failed > 0 and "failed" or "sent"
+            state.numberWhisperSentAt = GetTimestamp()
+            state.numberWhisperSentCount = sent
+            state.numberWhisperFailedCount = failed
+            AddMultiRaidLog("Coordinator local number whispers completed: " .. tostring(sent) .. " sent, " .. tostring(failed) .. " failed.")
+        end)
+    end
+
+    for index = 1, #state.globalAssignments do
+        local entry = state.globalAssignments[index]
+
+        if entry and entry.raidId == 1 and entry.name and entry.number then
+            QueueNumberWhisper(entry.name, BuildNumberMessage(entry.number), "Coordinator number whispers")
+            queuedCount = queuedCount + 1
         end
     end
 
@@ -2803,17 +3160,17 @@ function API.SendMultiRaidNumbers()
         end
     end
 
-    state.numberWhisperStatus = "requested"
-    state.numberWhisperSentAt = GetTimestamp()
-    state.numberWhisperSentCount = sentCount
-    AddMultiRaidLog("Number whisper dispatch: local " .. tostring(sentCount)
+    state.numberWhisperStatus = queuedCount > 0 and "sending" or "requested"
+    state.numberWhisperQueuedAt = GetTimestamp()
+    state.numberWhisperQueuedCount = queuedCount
+    AddMultiRaidLog("Number whisper dispatch: local " .. tostring(queuedCount)
         .. ", assistants " .. tostring(assistantCommandCount) .. ".")
 
     if lastError then
         return false, lastError
     end
 
-    return true, sentCount + assistantCommandCount
+    return true, queuedCount + assistantCommandCount
 end
 
 function API.StartMultiRaidGameSession()

@@ -155,6 +155,33 @@ local function BuildMultiLogText(entry)
     return tostring(entry.at or "-") .. " | " .. tostring(entry.message or "-")
 end
 
+local function BuildSendQueueStatusText()
+    local view = API.GetSendQueueView()
+    local chat = view.chat or {}
+    local addon = view.addon or {}
+    local parts = {}
+
+    if chat.active then
+        parts[#parts + 1] = tostring(chat.label or "Chat")
+            .. ": " .. tostring(chat.sent or 0)
+            .. "/" .. tostring(chat.total or 0)
+            .. " sent"
+    end
+
+    if addon.active then
+        parts[#parts + 1] = tostring(addon.label or "Addon")
+            .. ": " .. tostring(addon.sent or 0)
+            .. "/" .. tostring(addon.total or 0)
+            .. " sent"
+    end
+
+    if #parts <= 0 then
+        return nil
+    end
+
+    return table.concat(parts, " | ")
+end
+
 local function RefreshMultiRaidSetup()
     local view = API.GetMultiRaidView()
     local assistants = view.assistants or {}
@@ -247,6 +274,9 @@ local function UpdateSummary()
     local invalidRollPending = API.HasInvalidRollPending()
     local multiView = API.GetMultiRaidView()
     local multiGameActive = multiView.gameStatus == "active"
+    local sendQueueView = API.GetSendQueueView()
+    local sendQueueActive = (sendQueueView.chat and sendQueueView.chat.active)
+        or (sendQueueView.addon and sendQueueView.addon.active)
 
     if activeText then
         if multiCoordinatorMode then
@@ -287,7 +317,7 @@ local function UpdateSummary()
     SetButtonEnabled(startGameButton, singleRaidMode and not session.active)
     SetButtonEnabled(stopGameButton, session.active and not API.HasPendingRoll())
     SetButtonEnabled(rosterStartButton, singleRaidMode and canModifyRoster)
-    SetButtonEnabled(rosterSendButton, singleRaidMode and canModifyRoster and API.HasRaidNumbers() and count > 0)
+    SetButtonEnabled(rosterSendButton, singleRaidMode and canModifyRoster and API.HasRaidNumbers() and count > 0 and not sendQueueActive)
     SetButtonEnabled(rosterResetButton, singleRaidMode and canModifyRoster)
     SetButtonEnabled(roundRollButton, (singleRaidMode and session.active and count > 0 and not API.HasPendingRoll() and not invalidRollPending)
         or (multiCoordinatorMode and multiGameActive and not API.HasPendingRoll() and not invalidRollPending))
@@ -379,6 +409,10 @@ local function RefreshRoster()
     local entries = API.GetRaidNumberEntries()
     local totalPages = math.max(1, math.ceil(#entries / ROWS_PER_PAGE))
     local mode = API.GetSessionMode()
+    local queueText = BuildSendQueueStatusText()
+    local sendQueueView = API.GetSendQueueView()
+    local sendQueueActive = (sendQueueView.chat and sendQueueView.chat.active)
+        or (sendQueueView.addon and sendQueueView.addon.active)
 
     if multiCoordinatorFrame then
         if mode == "multi_coordinator" then
@@ -398,6 +432,14 @@ local function RefreshRoster()
 
     RefreshMultiRaidSetup()
 
+    if queueText then
+        if mode == "single" then
+            SetRosterStatus(queueText)
+        else
+            SetMultiSetupStatus(queueText)
+        end
+    end
+
     if rosterPage > totalPages then
         rosterPage = totalPages
     end
@@ -412,7 +454,7 @@ local function RefreshRoster()
             row.nameValue = entry.name
             row.number:SetText(tostring(entry.number))
             row.name:SetText(entry.name)
-            SetButtonEnabled(row.sendButton, API.CanModifyRoster() and API.HasRaidNumbers())
+            SetButtonEnabled(row.sendButton, API.CanModifyRoster() and API.HasRaidNumbers() and not sendQueueActive)
             row:Show()
         else
             row.nameValue = nil
@@ -1269,8 +1311,16 @@ local function CreateRosterPage(parent)
             return
         end
 
-        local sentCount = API.SendNumbers()
-        SetRosterStatus("Sent MG number whispers: " .. tostring(sentCount))
+        local ok, result = API.SendNumbers()
+
+        if ok then
+            SetRosterStatus("Queued MG number whispers: " .. tostring(result))
+        elseif result == "SEND_QUEUE_ACTIVE" then
+            SetRosterStatus("Number whispers are already sending.")
+        else
+            SetRosterStatus("Cannot send MG number whispers: " .. tostring(result))
+        end
+
         RefreshAll()
     end)
 
@@ -1368,7 +1418,7 @@ local function CreateRosterPage(parent)
         local ok, result = API.AssignMultiRaidGlobalNumbers()
 
         if ok then
-            SetMultiSetupStatus("Global numbers assigned: " .. tostring(result) .. ".")
+            SetMultiSetupStatus("Global numbers assigned; assistant sync queued: " .. tostring(result) .. ".")
         else
             SetMultiSetupStatus("Cannot assign numbers: " .. tostring(result))
         end
@@ -1380,7 +1430,7 @@ local function CreateRosterPage(parent)
         local ok, result = API.SendMultiRaidNumbers()
 
         if ok then
-            SetMultiSetupStatus("Number dispatch started: " .. tostring(result) .. ".")
+            SetMultiSetupStatus("Number dispatch queued: " .. tostring(result) .. ".")
         else
             SetMultiSetupStatus("Cannot send numbers: " .. tostring(result))
         end
@@ -1477,7 +1527,7 @@ local function CreateRosterPage(parent)
         local ok, result = API.SendMultiRaidRoster()
 
         if ok then
-            SetMultiSetupStatus("Local roster sent: " .. tostring(result) .. ".")
+            SetMultiSetupStatus("Local roster queued: " .. tostring(result) .. ".")
         else
             SetMultiSetupStatus("Cannot send roster: " .. tostring(result))
         end
