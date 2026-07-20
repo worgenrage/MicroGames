@@ -4,6 +4,7 @@
 
 - Added a Single Raid setup step to move the GM into the last used raid subgroup before recording the raid.
 - Locked `Record Raid` until the GM move is verified, so raid snapshots are recorded only after the live raid layout is prepared.
+- Added CurseForge logo assets for the MicroGames addon page.
 
 ## 0.2.2
 
