@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Added final coin-style CurseForge logo assets with a highlighted `DICE` coin mark.
+
 ## 0.2.4
 
 - Added a public README describing MicroGames as a DICE guild-focused WoW Classic addon.
