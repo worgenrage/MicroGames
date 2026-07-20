@@ -427,7 +427,10 @@ Both persist through SavedVariables.
 ## Documentation Files
 
 - `AGENT.MD`: standing agent/project rules
+- `README.md`: public GitHub and CurseForge overview
+- `LICENSE`: MIT license and author attribution
 - `DEV.MD`: current development state summary
+- `docs/ReleasePackage.md`: recommended release ZIP contents
 - `docs/RaidNumbering.md`: raid numbering model
 - `docs/Rounds.md`: round/roll/reroll/winner model
 - `docs/Sessions.md`: active session and history persistence

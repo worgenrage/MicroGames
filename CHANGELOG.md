@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.4
+
+- Added a public README describing MicroGames as a DICE guild-focused WoW Classic addon.
+- Added MIT license attribution and release package documentation.
+- Updated documentation for the GM move setup requirement, throttled send queues, and current Multi Raid behavior.
+
 ## 0.2.3
 
 - Added a Single Raid setup step to move the GM into the last used raid subgroup before recording the raid.

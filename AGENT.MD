@@ -67,7 +67,7 @@
 - Bulk number whispers must use the internal throttled send queue, not a tight loop of `SendChatMessage`.
 - The default number whisper text is `Your MG number is: XX`; UI-provided text should be saved through the API and use `XX` as the number placeholder.
 - Number whisper text must persist through `MicroGamesDB.numberWhisperText`.
-- The current scope is game-master-only, so addon-message synchronization is not required yet.
+- Single Raid scope is game-master-driven from one client. Multi Raid uses Coordinator/Assistant addon-message synchronization.
 - Keep the detailed model in `docs/RaidNumbering.md` in sync with implementation changes.
 
 ## Rounds Model

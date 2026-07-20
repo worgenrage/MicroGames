@@ -11,12 +11,13 @@ MicroGames keeps the active game session in SavedVariables so reloads and window
 
 `addon.API.StartGameSession()` starts or resumes the active game session.
 
-- If no raid numbers exist yet, it creates a raid numbering snapshot first.
+- If no raid numbers exist yet, Single Raid mode requires the GM move step to be ready before a raid numbering snapshot can be created.
 - It stores the roster snapshot, start timestamp, current round, rounds, and rewards.
 - If an active session already exists after reload, it restores that session.
 - Pending roll state is cleared on reload because scheduled roll timers do not survive reload.
 - If the user presses `START GAME` while a session is already active, the API returns `ACTIVE_SESSION_EXISTS` and does not start another session.
 - While a session is active, roster setup should be locked so the active snapshot cannot be changed accidentally.
+- After a game is stopped, the next Single Raid setup requires a fresh GM move before another `Record Raid`.
 
 ## Stop Game
 

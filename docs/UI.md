@@ -15,7 +15,7 @@ Coordinator Setup can record the main raid, assign global numbers across receive
 ## Tabs
 
 - Control: Round roll, winner status, winner actions, reward yells, and compact setup controls.
-- Setup: Shows the recorded name and number snapshot from `StartRaidNumbering()` and setup controls.
+- Setup: Prepares the live raid layout, shows the recorded name and number snapshot from `StartRaidNumbering()`, and provides setup controls.
 - Rewards: Edits reward yell templates and provides a secondary reward view.
 - History: Shows completed sessions, session details, round results, winners, and rewards.
 - History marks completed sessions as `Single` or `Multi`; Multi sessions include the multi session ID, Coordinator, raid ranges, winner raid IDs, and Assistant verification status.
@@ -27,7 +27,9 @@ Coordinator Setup can record the main raid, assign global numbers across receive
 
 - All visible UI text should be English.
 - Loading the addon should only create UI and register commands.
-- Starting numbering should only record the current raid snapshot.
+- `Move GM to Last Spot` should scan the live raid layout and swap the GM into the last used subgroup before any Single Raid snapshot is recorded.
+- `Record Raid` should stay disabled until the GM move is verified.
+- Starting numbering should only record the current raid snapshot after the GM move is ready.
 - Sending numbers should be a separate explicit action.
 - Sending numbers requires active numbering; stopped snapshots remain visible but cannot be whispered.
 - Round Roll should increment the round, announce `ROUND X`, and then roll after the configured delay.
@@ -41,7 +43,7 @@ Coordinator Setup can record the main raid, assign global numbers across receive
 - `START GAME` should be disabled/greyed when a game session is already active.
 - `STOP GAME` should be disabled/greyed when no game session is active.
 - The Control tab should display a clear text status such as `EVENT STARTED - ROUND X - MEMBERS X`.
-- Setup controls such as record raid, send numbers, and clear raid should live on the Setup tab.
+- Setup controls such as move GM, record raid, send numbers, and clear raid should live on the Setup tab.
 - Setup controls should write to a Setup-local status line, not the Control status line.
 - While a game session is active or a roll is pending, setup controls and per-player number sends must be disabled/greyed.
 - Tabs must stay inside the main window bounds, not below or outside the frame.
@@ -64,7 +66,8 @@ Coordinator Setup can record the main raid, assign global numbers across receive
 - `START GAME` calls `addon.API.StartGameSession()`.
 - `STOP GAME` calls `addon.API.StopGameSession()`, stores the completed session in history, and clears runtime roster/round/winner state for the next game.
 - If an active session exists, `StartGameSession()` returns `ACTIVE_SESSION_EXISTS` and must not start a second session.
-- `Record Raid` calls `addon.API.StartRaidNumbering()` and records the current raid snapshot.
+- `Move GM to Last Spot` calls `addon.API.MoveGMToLastSpot()` and prepares the live raid layout without recording a MicroGames snapshot.
+- `Record Raid` is enabled only when `addon.API.CanRecordRaid()` is true, then calls `addon.API.StartRaidNumbering()` and records the current raid snapshot.
 - `Send Numbers` calls `addon.API.SendNumbers()` and whispers numbers to recorded players only while numbering is active.
 - Multi Raid `Send Numbers` calls `addon.API.SendMultiRaidNumbers()`; the Coordinator whispers main-raid players and Assistants automatically whisper their own assigned players.
 - Multi Raid `Start Multi` calls `addon.API.StartMultiRaidGameSession()` and enables Coordinator multi round rolls.
@@ -95,7 +98,8 @@ Coordinator Setup can record the main raid, assign global numbers across receive
 
 - The Setup tab reads `addon.API.GetRaidNumberEntries()`.
 - Each visible roster row can call `addon.API.SendNumberWhisperToName(name)` for a single recorded player while setup is unlocked.
-- Setup buttons call `StartRaidNumbering()`, `SendNumbers()`, and `ResetRaidNumbering()`.
+- Setup buttons call `MoveGMToLastSpot()`, `StartRaidNumbering()`, `SendNumbers()`, and `ResetRaidNumbering()`.
+- The Setup status line displays `GetGMMoveView().message` while Single Raid has no recorded numbers.
 - During an active game session or pending roll, setup buttons must not modify the roster or send number whispers.
 - Roster pagination is UI-only and must not change recorded data.
 
