@@ -2,10 +2,10 @@
 
 ## Target Runtime
 
-- Target client: WoW Classic Era / Hardcore 1.15.8.
+- Target client: WoW Classic Era / Hardcore 1.15.9.
 - Supported client language: English only.
-- TOC interface/API compatibility: `## Interface: 11508`.
-- `Interface: 11508` is the WoW client/interface API compatibility number, not a Lua version.
+- TOC interface/API compatibility: `## Interface: 11509`.
+- `Interface: 11509` is the WoW client/interface API compatibility number, not a Lua version.
 - Lua target: Blizzard WoW addon sandbox, Lua 5.1 subset.
 - Language Server flavor: `classic_era`.
 
@@ -23,7 +23,7 @@
   - normal Lua `require` / `package`
 - Load order is controlled by the `.toc` file.
 - Use ASCII-only identifiers, file/module names, slash command tokens, SavedVariables names, and constants.
-- Use only WoW APIs available in Classic Era 1.15.8.
+- Use only WoW APIs available in Classic Era 1.15.9.
 
 ## WoW Lua LS
 
@@ -143,6 +143,8 @@
 - The Coordinator records its own main raid separately, assigns one global number range, and sends Assistant ranges through addon-message whispers.
 - The Coordinator can dispatch number whispers after global assignment: local main-raid players are whispered by the Coordinator, Assistant raid players are whispered by their accepted Assistant.
 - Chunked Multi Raid roster and assignment sync should use the internal addon-message queue to avoid per-prefix addon-message throttling.
+- Chat or addon-message lockdown must pause queued sends without dropping items; resume them after `ADDON_RESTRICTION_STATE_CHANGED` once `C_ChatInfo.InChatMessagingLockdown()` is false.
+- Treat `Enum.SendAddonMessageResult.AddOnMessageLockdown` as a temporary restriction, not as a permanent send failure.
 - Multi Raid round rolls and rerolls require an active Multi Raid game session started by the Coordinator.
 - Active Multi Raid games must lock roster recording, roster sending, and global assignment mutation.
 - Completed Multi Raid games are stored in the shared `MicroGamesDB.history` list with `sessionType = "multi"`.

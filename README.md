@@ -28,7 +28,7 @@ The code is still licensed for general use under MIT. Other guilds may use, modi
 ## Target Client
 
 - WoW Classic Era / Hardcore
-- Interface: `11508`
+- Interface: `11509`
 - English client roll text only
 
 The addon relies on WoW's normal raid APIs and does not use external runtime dependencies.

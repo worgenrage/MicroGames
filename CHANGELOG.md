@@ -2,7 +2,12 @@
 
 ## Unreleased
 
+## 0.2.5
+
 - Added final coin-style CurseForge logo assets with a highlighted `DICE` coin mark.
+- Updated the WoW Classic Era / Hardcore API target to 1.15.9 (`Interface: 11509`).
+- Added chat-lockdown handling that pauses queued whispers and addon messages without dropping them, then resumes after restrictions are lifted.
+- Added support for the new `AddOnMessageLockdown` send result and prevented restricted visible-chat sends from being reported as successful.
 
 ## 0.2.4
 

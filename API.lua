@@ -37,6 +37,9 @@ local RecordMultiRaidSessionRound
 local QueueNumberWhisper
 local QueueMultiRaidWhisper
 local HandleMultiRaidRollResult
+local StartChatQueueTicker
+local StartAddonQueueTicker
+local ResumePausedSendQueues
 local defaultRewardTemplates = {
     "10 GOLD!",
     "20 GOLD!",
@@ -66,6 +69,8 @@ local chatSendQueue = {
     sent = 0,
     failed = 0,
     active = false,
+    paused = false,
+    pauseReason = nil,
     label = nil,
     ticker = nil
 }
@@ -75,6 +80,8 @@ local addonSendQueue = {
     sent = 0,
     failed = 0,
     active = false,
+    paused = false,
+    pauseReason = nil,
     label = nil,
     ticker = nil
 }
@@ -296,6 +303,10 @@ local function GetSendAddonMessageReason(result)
             return "CHANNEL_THROTTLE"
         elseif result == addonResult.GeneralError then
             return "GENERAL_ERROR"
+        elseif addonResult.NotInGuild and result == addonResult.NotInGuild then
+            return "NOT_IN_GUILD"
+        elseif addonResult.AddOnMessageLockdown and result == addonResult.AddOnMessageLockdown then
+            return "ADDON_MESSAGE_LOCKDOWN"
         elseif result == addonResult.TargetOffline then
             return "TARGET_OFFLINE"
         end
@@ -303,6 +314,10 @@ local function GetSendAddonMessageReason(result)
         return nil
     elseif result == 3 then
         return "ADDON_MESSAGE_THROTTLE"
+    elseif result == 11 then
+        return "ADDON_MESSAGE_LOCKDOWN"
+    elseif result == 12 then
+        return "TARGET_OFFLINE"
     end
 
     return "SEND_RESULT_" .. tostring(result)
@@ -1775,26 +1790,61 @@ BuildNumberMessage = function(number)
     return message
 end
 
-SendWhisper = function(message, name)
-    local ok = pcall(C_ChatInfo.SendChatMessage, SanitizeChatText(message), "WHISPER", nil, name)
+local function IsChatMessagingLockedDown()
+    local ok, lockedDown
 
-    return ok
+    if not C_ChatInfo or not C_ChatInfo.InChatMessagingLockdown then
+        return false
+    end
+
+    ok, lockedDown = pcall(C_ChatInfo.InChatMessagingLockdown)
+
+    return ok and lockedDown == true
+end
+
+local function SendVisibleChatMessage(message, chatType, target)
+    local ok
+
+    if IsChatMessagingLockedDown() then
+        return false, "CHAT_MESSAGE_LOCKDOWN"
+    end
+
+    if not C_ChatInfo or not C_ChatInfo.SendChatMessage then
+        return false, "CHAT_API_UNAVAILABLE"
+    end
+
+    ok = pcall(C_ChatInfo.SendChatMessage, SanitizeChatText(message), chatType, nil, target)
+
+    if not ok then
+        return false, "SEND_FAILED"
+    end
+
+    return true
+end
+
+SendWhisper = function(message, name)
+    return SendVisibleChatMessage(message, "WHISPER", name)
 end
 
 SendRaidMessage = function(message)
-    C_ChatInfo.SendChatMessage(SanitizeChatText(message), "RAID")
+    return SendVisibleChatMessage(message, "RAID")
 end
 
 local function SendRaidWarningMessage(message)
-    C_ChatInfo.SendChatMessage(SanitizeChatText(message), "RAID_WARNING")
+    return SendVisibleChatMessage(message, "RAID_WARNING")
 end
 
 local function SendSayMessage(message)
-    C_ChatInfo.SendChatMessage(SanitizeChatText(message), "SAY")
+    return SendVisibleChatMessage(message, "SAY")
 end
 
 local function SendYellMessage(message)
-    C_ChatInfo.SendChatMessage(SanitizeChatText(message), "YELL")
+    return SendVisibleChatMessage(message, "YELL")
+end
+
+local function ClearQueuePause(queue)
+    queue.paused = false
+    queue.pauseReason = nil
 end
 
 local function StopQueueTicker(queue)
@@ -1806,6 +1856,12 @@ local function StopQueueTicker(queue)
     queue.active = false
 end
 
+local function PauseQueue(queue, reason)
+    StopQueueTicker(queue)
+    queue.paused = true
+    queue.pauseReason = reason
+end
+
 local function FinishChatQueue()
     local onComplete = chatSendQueue.onComplete
     local label = chatSendQueue.label
@@ -1813,6 +1869,7 @@ local function FinishChatQueue()
     local failed = chatSendQueue.failed
 
     StopQueueTicker(chatSendQueue)
+    ClearQueuePause(chatSendQueue)
     chatSendQueue.label = label
     chatSendQueue.onComplete = nil
     chatSendQueue.completedAt = GetTimestamp()
@@ -1824,22 +1881,29 @@ local function FinishChatQueue()
     RefreshUI()
 end
 
-local function StartChatQueueTicker()
+StartChatQueueTicker = function()
     if chatSendQueue.ticker then
         return
     end
 
+    if IsChatMessagingLockedDown() then
+        PauseQueue(chatSendQueue, "CHAT_MESSAGE_LOCKDOWN")
+        RefreshUI()
+        return
+    end
+
+    ClearQueuePause(chatSendQueue)
     chatSendQueue.active = true
     chatSendQueue.ticker = C_Timer.NewTicker(CHAT_SEND_INTERVAL, function()
         local item = table.remove(chatSendQueue.items, 1)
-        local ok
+        local ok, reason
 
         if not item then
             FinishChatQueue()
             return
         end
 
-        ok = SendWhisper(item.message, item.target)
+        ok, reason = SendWhisper(item.message, item.target)
 
         if ok then
             chatSendQueue.sent = chatSendQueue.sent + 1
@@ -1847,11 +1911,14 @@ local function StartChatQueueTicker()
             if item.onSent then
                 item.onSent(item)
             end
+        elseif reason == "CHAT_MESSAGE_LOCKDOWN" then
+            table.insert(chatSendQueue.items, 1, item)
+            PauseQueue(chatSendQueue, reason)
         else
             chatSendQueue.failed = chatSendQueue.failed + 1
 
             if item.onFailed then
-                item.onFailed(item, "SEND_FAILED")
+                item.onFailed(item, reason or "SEND_FAILED")
             end
         end
 
@@ -1882,6 +1949,7 @@ local function ResetChatQueue(label, onComplete)
     chatSendQueue.total = 0
     chatSendQueue.sent = 0
     chatSendQueue.failed = 0
+    ClearQueuePause(chatSendQueue)
     chatSendQueue.label = label
     chatSendQueue.onComplete = onComplete
     chatSendQueue.completedAt = nil
@@ -1889,15 +1957,23 @@ end
 
 local function FinishAddonQueue()
     StopQueueTicker(addonSendQueue)
+    ClearQueuePause(addonSendQueue)
     addonSendQueue.completedAt = GetTimestamp()
     RefreshUI()
 end
 
-local function StartAddonQueueTicker()
+StartAddonQueueTicker = function()
     if addonSendQueue.ticker then
         return
     end
 
+    if IsChatMessagingLockedDown() then
+        PauseQueue(addonSendQueue, "ADDON_MESSAGE_LOCKDOWN")
+        RefreshUI()
+        return
+    end
+
+    ClearQueuePause(addonSendQueue)
     addonSendQueue.active = true
     addonSendQueue.ticker = C_Timer.NewTicker(ADDON_SEND_INTERVAL, function()
         local item = table.remove(addonSendQueue.items, 1)
@@ -1923,6 +1999,9 @@ local function StartAddonQueueTicker()
             if item.onSent then
                 item.onSent(item)
             end
+        elseif result == "ADDON_MESSAGE_LOCKDOWN" then
+            table.insert(addonSendQueue.items, 1, item)
+            PauseQueue(addonSendQueue, result)
         elseif result == "ADDON_MESSAGE_THROTTLE" or result == "CHANNEL_THROTTLE" then
             item.retryCount = (item.retryCount or 0) + 1
 
@@ -1945,6 +2024,24 @@ local function StartAddonQueueTicker()
 
         RefreshUI()
     end)
+end
+
+ResumePausedSendQueues = function()
+    if IsChatMessagingLockedDown() then
+        return
+    end
+
+    if chatSendQueue.paused and #chatSendQueue.items > 0 then
+        ClearQueuePause(chatSendQueue)
+        StartChatQueueTicker()
+    end
+
+    if addonSendQueue.paused and #addonSendQueue.items > 0 then
+        ClearQueuePause(addonSendQueue)
+        StartAddonQueueTicker()
+    end
+
+    RefreshUI()
 end
 
 QueueMultiRaidWhisper = function(messageType, target, sessionId, raidId, value1, value2, label, onSent, onFailed)
@@ -2226,12 +2323,15 @@ end
 eventFrame:RegisterEvent("CHAT_MSG_SYSTEM")
 eventFrame:RegisterEvent("CHAT_MSG_ADDON")
 eventFrame:RegisterEvent("GROUP_ROSTER_UPDATE")
+eventFrame:RegisterEvent("ADDON_RESTRICTION_STATE_CHANGED")
 if C_ChatInfo and C_ChatInfo.RegisterAddonMessagePrefix then
     monitoringPrefixRegistered = C_ChatInfo.RegisterAddonMessagePrefix(ADDON_MESSAGE_PREFIX) ~= false
 end
 eventFrame:SetScript("OnEvent", function(self, event, message, payload, channel, sender)
     if event == "CHAT_MSG_SYSTEM" and message then
         HandleSystemMessage(message)
+    elseif event == "ADDON_RESTRICTION_STATE_CHANGED" then
+        ResumePausedSendQueues()
     elseif event == "GROUP_ROSTER_UPDATE" then
         MarkAssistantRosterStale()
         if not VerifyPendingGMMove() then
@@ -2535,9 +2635,7 @@ function API.SendNumberWhisperToName(name)
         return false
     end
 
-    SendWhisper(BuildNumberMessage(number), name)
-
-    return true
+    return SendWhisper(BuildNumberMessage(number), name)
 end
 
 function API.SendNumbers()
@@ -2778,7 +2876,9 @@ function API.GetSendQueueView()
             sent = chatSendQueue.sent,
             failed = chatSendQueue.failed,
             pending = #chatSendQueue.items,
-            completedAt = chatSendQueue.completedAt
+            completedAt = chatSendQueue.completedAt,
+            paused = chatSendQueue.paused,
+            pauseReason = chatSendQueue.pauseReason
         },
         addon = {
             active = addonSendQueue.active,
@@ -2787,7 +2887,9 @@ function API.GetSendQueueView()
             sent = addonSendQueue.sent,
             failed = addonSendQueue.failed,
             pending = #addonSendQueue.items,
-            completedAt = addonSendQueue.completedAt
+            completedAt = addonSendQueue.completedAt,
+            paused = addonSendQueue.paused,
+            pauseReason = addonSendQueue.pauseReason
         }
     }
 end
@@ -2799,6 +2901,8 @@ function API.CancelSendQueues()
     addonSendQueue.items = {}
     chatSendQueue.active = false
     addonSendQueue.active = false
+    ClearQueuePause(chatSendQueue)
+    ClearQueuePause(addonSendQueue)
     RefreshUI()
 
     return true, "SEND_QUEUES_CANCELLED"
@@ -3050,6 +3154,7 @@ function API.AssignMultiRaidGlobalNumbers()
     addonSendQueue.total = 0
     addonSendQueue.sent = 0
     addonSendQueue.failed = 0
+    ClearQueuePause(addonSendQueue)
     addonSendQueue.label = "Assistant assignments"
     addonSendQueue.completedAt = nil
 
@@ -3189,6 +3294,7 @@ function API.SendMultiRaidRoster()
     addonSendQueue.total = 0
     addonSendQueue.sent = 0
     addonSendQueue.failed = 0
+    ClearQueuePause(addonSendQueue)
     addonSendQueue.label = "Assistant roster"
     addonSendQueue.completedAt = nil
 
@@ -3704,11 +3810,17 @@ function API.GetRollCountdownSoundEnabled()
 end
 
 function API.TestRollCountdownSound()
+    local sent, reason
+
     if not API.GetRollCountdownSoundEnabled() then
         return false, "ROLL_COUNTDOWN_SOUND_DISABLED"
     end
 
-    SendRaidWarningMessage("MicroGames roll countdown sound test.")
+    sent, reason = SendRaidWarningMessage("MicroGames roll countdown sound test.")
+
+    if not sent then
+        return false, reason
+    end
 
     return true, "ROLL_COUNTDOWN_SOUND_TEST_SENT"
 end
@@ -3861,9 +3973,7 @@ function API.SendWinnerSay()
         return false
     end
 
-    SendSayMessage(message)
-
-    return true
+    return SendSayMessage(message)
 end
 
 function API.SendWinnerWhisper()
@@ -3873,9 +3983,7 @@ function API.SendWinnerWhisper()
         return false
     end
 
-    SendWhisper(message, lastWinnerName)
-
-    return true
+    return SendWhisper(message, lastWinnerName)
 end
 
 function API.GetRewardTemplates()
@@ -3939,6 +4047,7 @@ function API.SendRewardYell(index)
     local savedTemplates = EnsureRewardTemplates()
     local rewardText = savedTemplates[index]
     local message
+    local sent, reason
 
     if not rewardText or not lastWinnerNumber then
         return false
@@ -3950,7 +4059,12 @@ function API.SendRewardYell(index)
         return false
     end
 
-    SendYellMessage(message)
+    sent, reason = SendYellMessage(message)
+
+    if not sent then
+        return false, reason
+    end
+
     RecordSessionReward(rewardText, message)
     PersistActiveSessionState()
     BroadcastMonitoringState("REWARD_SENT")

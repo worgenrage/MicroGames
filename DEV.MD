@@ -2,9 +2,9 @@
 
 ## Project State
 
-MicroGames is a WoW Classic Era / Hardcore 1.15.8 addon.
+MicroGames is a WoW Classic Era / Hardcore 1.15.9 addon.
 
-- TOC interface: `11508`
+- TOC interface: `11509`
 - Lua target: Blizzard WoW addon sandbox, Lua 5.1 subset
 - Language server flavor: `classic_era`
 - Supported client language: English only

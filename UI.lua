@@ -162,18 +162,26 @@ local function BuildSendQueueStatusText()
     local addonQueue = view.addon or {}
     local parts = {}
 
-    if chat.active then
+    if chat.active or chat.paused then
         parts[#parts + 1] = tostring(chat.label or "Chat")
             .. ": " .. tostring(chat.sent or 0)
             .. "/" .. tostring(chat.total or 0)
             .. " sent"
+
+        if chat.paused then
+            parts[#parts] = parts[#parts] .. " - paused by chat restrictions"
+        end
     end
 
-    if addonQueue.active then
+    if addonQueue.active or addonQueue.paused then
         parts[#parts + 1] = tostring(addonQueue.label or "Addon")
             .. ": " .. tostring(addonQueue.sent or 0)
             .. "/" .. tostring(addonQueue.total or 0)
             .. " sent"
+
+        if addonQueue.paused then
+            parts[#parts] = parts[#parts] .. " - paused by chat restrictions"
+        end
     end
 
     if #parts <= 0 then
@@ -276,8 +284,8 @@ local function UpdateSummary()
     local multiView = API.GetMultiRaidView()
     local multiGameActive = multiView.gameStatus == "active"
     local sendQueueView = API.GetSendQueueView()
-    local sendQueueActive = (sendQueueView.chat and sendQueueView.chat.active)
-        or (sendQueueView.addon and sendQueueView.addon.active)
+    local sendQueueActive = (sendQueueView.chat and (sendQueueView.chat.active or sendQueueView.chat.paused))
+        or (sendQueueView.addon and (sendQueueView.addon.active or sendQueueView.addon.paused))
     local gmMoveView = API.GetGMMoveView()
 
     if activeText then
@@ -414,8 +422,8 @@ local function RefreshRoster()
     local mode = API.GetSessionMode()
     local queueText = BuildSendQueueStatusText()
     local sendQueueView = API.GetSendQueueView()
-    local sendQueueActive = (sendQueueView.chat and sendQueueView.chat.active)
-        or (sendQueueView.addon and sendQueueView.addon.active)
+    local sendQueueActive = (sendQueueView.chat and (sendQueueView.chat.active or sendQueueView.chat.paused))
+        or (sendQueueView.addon and (sendQueueView.addon.active or sendQueueView.addon.paused))
     local gmMoveView = API.GetGMMoveView()
 
     if multiCoordinatorFrame then
@@ -1148,16 +1156,24 @@ local function CreateControlPage(parent)
     winnerMessageText:SetJustifyH("LEFT")
 
     CreateButton(page, "Say Winner", 0, -260, 104, 24, function()
-        if API.SendWinnerSay() then
+        local ok, reason = API.SendWinnerSay()
+
+        if ok then
             SetStatus("Winner message sent in say.")
+        elseif reason == "CHAT_MESSAGE_LOCKDOWN" then
+            SetStatus("Chat messaging is temporarily restricted.")
         else
             SetStatus("No winner to announce.")
         end
     end)
 
     CreateButton(page, "Whisper Winner", 116, -260, 128, 24, function()
-        if API.SendWinnerWhisper() then
+        local ok, reason = API.SendWinnerWhisper()
+
+        if ok then
             SetStatus("Winner message whispered.")
+        elseif reason == "CHAT_MESSAGE_LOCKDOWN" then
+            SetStatus("Chat messaging is temporarily restricted.")
         else
             SetStatus("No winner to whisper.")
         end
@@ -1171,8 +1187,12 @@ local function CreateControlPage(parent)
         local column = (i - 1) % 2
         local row = math.floor((i - 1) / 2)
         local button = CreateButton(page, "Reward", column * 210, -322 - (row * 28), 198, 22, function(self)
-            if self.rewardIndex and API.SendRewardYell(self.rewardIndex) then
+            local ok, reason = API.SendRewardYell(self.rewardIndex)
+
+            if ok then
                 SetStatus("Reward yelled.")
+            elseif reason == "CHAT_MESSAGE_LOCKDOWN" then
+                SetStatus("Chat messaging is temporarily restricted.")
             else
                 SetStatus("No winner or reward template selected.")
             end
@@ -1258,9 +1278,12 @@ local function CreateRosterPage(parent)
 
         row.sendButton = CreateButton(row, "Send", 322, -1, 76, 20, function(self)
             local parentRow = self:GetParent()
+            local ok, reason = API.SendNumberWhisperToName(parentRow.nameValue)
 
-            if parentRow.nameValue and API.SendNumberWhisperToName(parentRow.nameValue) then
+            if ok then
                 SetRosterStatus("Sent number to " .. parentRow.nameValue .. ".")
+            elseif reason == "CHAT_MESSAGE_LOCKDOWN" then
+                SetRosterStatus("Chat messaging is temporarily restricted.")
             else
                 SetRosterStatus("Record the raid before sending MG number whispers.")
             end
@@ -1596,8 +1619,12 @@ local function CreateRewardsPage(parent)
         local column = (i - 1) % 2
         local row = math.floor((i - 1) / 2)
         local button = CreateButton(page, "Reward", column * 210, -58 - (row * 30), 198, 24, function(self)
-            if self.rewardIndex and API.SendRewardYell(self.rewardIndex) then
+            local ok, reason = API.SendRewardYell(self.rewardIndex)
+
+            if ok then
                 SetStatus("Reward yelled.")
+            elseif reason == "CHAT_MESSAGE_LOCKDOWN" then
+                SetStatus("Chat messaging is temporarily restricted.")
             else
                 SetStatus("No winner or reward template selected.")
             end
@@ -1914,6 +1941,8 @@ local function CreateSettingsPage(parent)
             SetStatus("Roll countdown sound test sent.")
         elseif result == "ROLL_COUNTDOWN_SOUND_DISABLED" then
             SetStatus("Enable Roll Countdown Sound before testing.")
+        elseif result == "CHAT_MESSAGE_LOCKDOWN" then
+            SetStatus("Chat messaging is temporarily restricted.")
         else
             SetStatus("Roll countdown sound test failed.")
         end
