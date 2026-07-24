@@ -38,6 +38,9 @@ Coordinator Setup can record the main raid, assign global numbers across receive
 - `Roll again for ROUND X` should be a smaller centered button below `Round Roll`.
 - Rerolling must not increment or change the current round.
 - After a roll result is detected, the UI should prominently show the winner number and matching player name.
+- After a Single Raid roll resolves, the Control status should show the winner, offline reroll requirement, or timeout instead of retaining the earlier pending-roll text.
+- Single Raid Control exposes a visible `Auto Announce winner + whisper` checkbox next to the manual winner actions. It defaults to off and persists through `MicroGamesDB.autoAnnounceWinnerEnabled`.
+- When enabled, a valid online Single Raid winner queues both the `{rt1}` raid winner announcement and the winner whisper. The Control status reports full success, partial failure, or complete failure.
 - The winner name should be visually separated from surrounding status text with a highlighted panel/color.
 - `Round Roll` is the primary gameplay button and should be visually separated from setup controls.
 - Game controls should expose `START GAME` and `STOP GAME` on the Control tab.
@@ -79,8 +82,8 @@ Coordinator Setup can record the main raid, assign global numbers across receive
 - In Multi Raid Coordinator mode, `Round Roll` calls `addon.API.MultiRaidRoundRoll()` and requires an active Multi Raid game session.
 - `Roll again for ROUND X` calls `addon.API.RerollCurrentRound()`.
 - In Multi Raid Coordinator mode, `Roll again for ROUND X` calls `addon.API.MultiRaidRerollCurrentRound()` and requires an active Multi Raid game session.
-- `Say Winner` calls `addon.API.SendWinnerSay()` with `You win ROUND X come closer! :)`.
-- `Whisper Winner` calls `addon.API.SendWinnerWhisper()` with `You win ROUND X come closer! :)`.
+- `Say Winner` calls `addon.API.SendWinnerSay()` with `You win ROUND X! Your MG number #N was rolled. Come closer! :)`.
+- `Whisper Winner` calls `addon.API.SendWinnerWhisper()` with `You win ROUND X! Your MG number #N was rolled. Come closer! :)`.
 - Reward buttons call `addon.API.SendRewardYell(index)` from the Control tab during gameplay.
 - `Clear Raid` calls `addon.API.ResetRaidNumbering()` and clears recorded names, numbers, and rounds.
 - The Control tab displays `HasRaidNumbers()`, `CountRaidNumbers()`, `GetCurrentRound()`, `BuildPreviousRoundMessage()`, `BuildRoundMessage()`, and `BuildRollCommand()` output.
@@ -113,7 +116,8 @@ Coordinator Setup can record the main raid, assign global numbers across receive
 - The delay input calls `addon.API.SetRoundRollDelay(seconds)`.
 - The `Roll Countdown Sound` checkbox calls `addon.API.SetRollCountdownSoundEnabled(enabled)`.
 - The `Test Sound` button calls `addon.API.TestRollCountdownSound()` and sends one raid warning test only when roll countdown sound is enabled.
-- Whisper text, round delay, roll countdown sound, and added reward templates persist through WoW SavedVariables.
+- The Single Raid Control checkbox calls `addon.API.SetAutoAnnounceWinnerEnabled(enabled)`.
+- Whisper text, round delay, roll countdown sound, automatic winner announce, and added reward templates persist through WoW SavedVariables.
 
 ## Monitoring Bindings
 

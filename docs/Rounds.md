@@ -34,7 +34,11 @@ Rounds do not advance while the addon is loading.
 - The winner is resolved from the recorded raid numbering snapshot.
 - If the resolved snapshot player is offline in the current live raid roster, the roll is recorded as invalid and the current round must be rerolled.
 - Invalid offline rolls do not change assigned player numbers.
-- The winner message is `You win ROUND X come closer! :)`.
+- The winner message is `You win ROUND X! Your MG number #N was rolled. Come closer! :)`.
+- `MicroGamesDB.autoAnnounceWinnerEnabled` persists the default-off Single Raid automatic winner-message setting.
+- When enabled, a valid online Single Raid roll queues `{rt1} ROUND X WINNER: [PlayerName] - MG #N! {rt1}` in raid chat and whispers the winner message.
+- Automatic winner messages use the throttled visible-chat queue, pause during chat lockdown, and report full success or partial/complete failure in Control status.
+- Invalid/offline rolls, timeouts, Multi Raid results, and winner state restored after `/reload` do not trigger automatic messages.
 - Reward yell templates can be selected manually after a winner is detected.
 - Reward yells are never automatic.
 - Reward history entries are only recorded when `addon.API.SendRewardYell(index)` is called by an explicit reward button action.
@@ -56,11 +60,14 @@ local rerollButtonText = addon.API.BuildRerollButtonText()
 local winner = addon.API.GetLastWinner()
 local winnerText = addon.API.BuildLastWinnerText()
 local winnerMessage = addon.API.BuildWinnerMessage()
+local winnerRaidMessage = addon.API.BuildWinnerRaidMessage(4, 37, "PlayerName")
+local autoAnnounceWinner = addon.API.GetAutoAnnounceWinnerEnabled()
 local rewardTemplates = addon.API.GetRewardTemplates()
 local rewardYell = addon.API.BuildRewardYellMessage("10 GOLD!")
 
 addon.API.SetRoundRollDelay(2)
 addon.API.SetRollCountdownSoundEnabled(true)
+addon.API.SetAutoAnnounceWinnerEnabled(true)
 addon.API.ResetRounds()
 addon.API.AddRewardTemplate("20 GOLD!")
 addon.API.RemoveRewardTemplate(1)

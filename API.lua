@@ -36,6 +36,7 @@ local RecordMultiRaidSessionRound
 local PersistMultiRaidActiveSessionState
 local QueueNumberWhisper
 local QueueMultiRaidWhisper
+local QueueAutoWinnerMessages
 local HandleMultiRaidRollResult
 local StartChatQueueTicker
 local StartAddonQueueTicker
@@ -109,6 +110,10 @@ local function EnsureSettings()
 
     if type(MicroGamesDB.rollCountdownSoundEnabled) ~= "boolean" then
         MicroGamesDB.rollCountdownSoundEnabled = false
+    end
+
+    if type(MicroGamesDB.autoAnnounceWinnerEnabled) ~= "boolean" then
+        MicroGamesDB.autoAnnounceWinnerEnabled = false
     end
 
     if MicroGamesDB.sessionMode ~= SESSION_MODE_MULTI_COORDINATOR
@@ -268,6 +273,12 @@ end
 local function RefreshUI()
     if addon.UI and addon.UI.Refresh then
         addon.UI.Refresh()
+    end
+end
+
+local function SetUIStatus(message)
+    if addon.UI and addon.UI.SetStatus then
+        addon.UI.SetStatus(message)
     end
 end
 
@@ -2009,7 +2020,7 @@ StartChatQueueTicker = function()
             return
         end
 
-        ok, reason = SendWhisper(item.message, item.target)
+        ok, reason = SendVisibleChatMessage(item.message, item.chatType or "WHISPER", item.target)
 
         if ok then
             chatSendQueue.sent = chatSendQueue.sent + 1
@@ -2032,21 +2043,26 @@ StartChatQueueTicker = function()
     end)
 end
 
-QueueNumberWhisper = function(target, message, label, onSent, onFailed)
+local function QueueVisibleChatMessage(message, chatType, target, label, onSent, onFailed)
     chatSendQueue.items[#chatSendQueue.items + 1] = {
         target = target,
         message = message,
+        chatType = chatType,
         onSent = onSent,
         onFailed = onFailed
     }
     chatSendQueue.total = chatSendQueue.total + 1
-    chatSendQueue.label = label or chatSendQueue.label or "Number whispers"
+    chatSendQueue.label = chatSendQueue.label or label or "Chat messages"
     chatSendQueue.completedAt = nil
 
     StartChatQueueTicker()
     RefreshUI()
 
     return true, #chatSendQueue.items
+end
+
+QueueNumberWhisper = function(target, message, label, onSent, onFailed)
+    return QueueVisibleChatMessage(message, "WHISPER", target, label or "Number whispers", onSent, onFailed)
 end
 
 local function ResetChatQueue(label, onComplete)
@@ -2368,6 +2384,8 @@ local function HandleSystemMessage(message)
     local roller, roll, minimum, maximum
     local playerName
     local winnerName
+    local queued
+    local queueReason
 
     if not pendingRollRound then
         return
@@ -2411,6 +2429,9 @@ local function HandleSystemMessage(message)
             addon.UI.Refresh()
         end
 
+        SetUIStatus("Offline winner: #" .. tostring(roll)
+            .. " - " .. tostring(winnerName or "-")
+            .. ". Reroll ROUND " .. tostring(lastInvalidRollRound) .. ".")
         return
     end
 
@@ -2423,6 +2444,23 @@ local function HandleSystemMessage(message)
 
     if addon.UI and addon.UI.Refresh then
         addon.UI.Refresh()
+    end
+
+    if API.GetAutoAnnounceWinnerEnabled() then
+        SetUIStatus("Winner: #" .. tostring(lastWinnerNumber)
+            .. " - " .. tostring(lastWinnerName or "-")
+            .. " | Auto announce + whisper queued.")
+        queued, queueReason = QueueAutoWinnerMessages(lastWinnerRound, lastWinnerNumber, lastWinnerName)
+
+        if not queued then
+            SetUIStatus("Winner: #" .. tostring(lastWinnerNumber)
+                .. " - " .. tostring(lastWinnerName or "-")
+                .. " | WARNING: auto messages not queued ("
+                .. tostring(queueReason or "QUEUE_FAILED") .. ").")
+        end
+    else
+        SetUIStatus("Winner: #" .. tostring(lastWinnerNumber)
+            .. " - " .. tostring(lastWinnerName or "-"))
     end
 end
 
@@ -2835,6 +2873,18 @@ end
 
 function API.GetRoundRollDelay()
     return EnsureSettings().roundRollDelay
+end
+
+function API.SetAutoAnnounceWinnerEnabled(enabled)
+    local settings = EnsureSettings()
+
+    settings.autoAnnounceWinnerEnabled = enabled and true or false
+
+    return settings.autoAnnounceWinnerEnabled
+end
+
+function API.GetAutoAnnounceWinnerEnabled()
+    return EnsureSettings().autoAnnounceWinnerEnabled
 end
 
 function API.GetSessionMode()
@@ -4117,11 +4167,23 @@ function API.BuildLastWinnerText()
 end
 
 function API.BuildWinnerMessage()
-    if not lastWinnerRound then
+    if not lastWinnerRound or not lastWinnerNumber then
         return nil
     end
 
-    return "You win ROUND " .. tostring(lastWinnerRound) .. " come closer! :)"
+    return "You win ROUND " .. tostring(lastWinnerRound)
+        .. "! Your MG number #" .. tostring(lastWinnerNumber)
+        .. " was rolled. Come closer! :)"
+end
+
+function API.BuildWinnerRaidMessage(roundNumber, winnerNumber, winnerName)
+    if not roundNumber or not winnerNumber or not winnerName then
+        return nil
+    end
+
+    return "{rt1} ROUND " .. tostring(roundNumber)
+        .. " WINNER: [" .. tostring(winnerName)
+        .. "] - MG #" .. tostring(winnerNumber) .. "! {rt1}"
 end
 
 function API.SendWinnerSay()
@@ -4142,6 +4204,77 @@ function API.SendWinnerWhisper()
     end
 
     return SendWhisper(message, lastWinnerName)
+end
+
+QueueAutoWinnerMessages = function(roundNumber, winnerNumber, winnerName)
+    local raidMessage = API.BuildWinnerRaidMessage(roundNumber, winnerNumber, winnerName)
+    local whisperMessage = API.BuildWinnerMessage()
+    local result = {
+        pending = 2,
+        raidSent = false,
+        whisperSent = false,
+        raidReason = nil,
+        whisperReason = nil
+    }
+
+    if not raidMessage or not whisperMessage or not winnerName then
+        return false, "WINNER_MESSAGE_UNAVAILABLE"
+    end
+
+    if not chatSendQueue.active and not chatSendQueue.paused and #chatSendQueue.items == 0 then
+        ResetChatQueue("Single Raid winner auto messages")
+    end
+
+    local function FinishItem(messageType, sent, reason)
+        if messageType == "raid" then
+            result.raidSent = sent
+            result.raidReason = reason
+        else
+            result.whisperSent = sent
+            result.whisperReason = reason
+        end
+
+        result.pending = result.pending - 1
+
+        if result.pending > 0 then
+            return
+        end
+
+        if result.raidSent and result.whisperSent then
+            SetUIStatus("Winner #" .. tostring(winnerNumber)
+                .. " | Auto raid announce + whisper sent.")
+        elseif result.raidSent then
+            SetUIStatus("Winner #" .. tostring(winnerNumber)
+                .. " | WARNING: raid sent; whisper failed ("
+                .. tostring(result.whisperReason or "SEND_FAILED") .. ").")
+        elseif result.whisperSent then
+            SetUIStatus("Winner #" .. tostring(winnerNumber)
+                .. " | WARNING: whisper sent; raid failed ("
+                .. tostring(result.raidReason or "SEND_FAILED") .. ").")
+        else
+            SetUIStatus("Winner #" .. tostring(winnerNumber)
+                .. " | WARNING: raid + whisper failed ("
+                .. tostring(result.raidReason or "SEND_FAILED") .. " / "
+                .. tostring(result.whisperReason or "SEND_FAILED") .. ").")
+        end
+    end
+
+    QueueVisibleChatMessage(raidMessage, "RAID", nil, "Single Raid winner auto messages",
+        function()
+            FinishItem("raid", true)
+        end,
+        function(item, reason)
+            FinishItem("raid", false, reason)
+        end)
+    QueueVisibleChatMessage(whisperMessage, "WHISPER", winnerName, "Single Raid winner auto messages",
+        function()
+            FinishItem("whisper", true)
+        end,
+        function(item, reason)
+            FinishItem("whisper", false, reason)
+        end)
+
+    return true
 end
 
 function API.GetRewardTemplates()
@@ -4419,6 +4552,8 @@ function API.RoundRoll()
             if addon.UI and addon.UI.Refresh then
                 addon.UI.Refresh()
             end
+
+            SetUIStatus("Roll timed out for ROUND " .. tostring(rollRound) .. ".")
         end
     end)
 
@@ -4468,6 +4603,8 @@ function API.RerollCurrentRound()
             if addon.UI and addon.UI.Refresh then
                 addon.UI.Refresh()
             end
+
+            SetUIStatus("Reroll timed out for ROUND " .. tostring(rerollRound) .. ".")
         end
     end)
 

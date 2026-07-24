@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+## 0.2.7
+
+- Updated the Single Raid Control status after roll resolution to show the winner, offline reroll requirement, or roll timeout instead of leaving the stale pending message visible.
+- Added a persisted, default-off `Auto Announce winner + whisper` checkbox to Single Raid Control.
+- Added queued automatic winner messages for valid online Single Raid rolls: an `{rt1}` raid announcement naming the winner and a round/number-specific winner whisper.
+- Added chat-lockdown recovery and explicit success, partial-failure, and failure statuses for automatic winner messages; invalid, offline, timed-out, Multi Raid, and restored rolls never trigger them.
+- Expanded the winner whisper text with the winning MG number.
+
 ## 0.2.6
 
 - Restored active Multi Raid round and winner state after `/reload`.

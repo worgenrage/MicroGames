@@ -36,6 +36,7 @@ Current stored fields:
 - `MicroGamesDB.numberWhisperText`
 - `MicroGamesDB.roundRollDelay`
 - `MicroGamesDB.rollCountdownSoundEnabled`
+- `MicroGamesDB.autoAnnounceWinnerEnabled`
 - `MicroGamesDB.sessionMode`
 - `MicroGamesDB.multiRaid`
 - `MicroGamesDB.rewardTemplates`
@@ -218,6 +219,9 @@ Main API:
 addon.API.GetLastWinner()
 addon.API.BuildLastWinnerText()
 addon.API.BuildWinnerMessage()
+addon.API.BuildWinnerRaidMessage(roundNumber, winnerNumber, winnerName)
+addon.API.GetAutoAnnounceWinnerEnabled()
+addon.API.SetAutoAnnounceWinnerEnabled(enabled)
 addon.API.SendWinnerSay()
 addon.API.SendWinnerWhisper()
 ```
@@ -225,7 +229,13 @@ addon.API.SendWinnerWhisper()
 Winner message:
 
 ```text
-You win ROUND X come closer! :)
+You win ROUND X! Your MG number #N was rolled. Come closer! :)
+```
+
+When the default-off Single Raid auto-announce setting is enabled, valid online winners queue the winner whisper and:
+
+```text
+{rt1} ROUND X WINNER: [PlayerName] - MG #N! {rt1}
 ```
 
 ## Rewards
@@ -424,11 +434,12 @@ Contains:
 - number whisper text
 - round roll delay
 - roll countdown sound
+- Single Raid automatic winner announce + whisper (shown on Control)
 - two-step `RESET ALL` data wipe control
 
 `RESET ALL` clears runtime state and resets `MicroGamesDB`, including active session, completed history, reward templates, round state, roster snapshot, and settings.
 
-Both persist through SavedVariables.
+These settings persist through SavedVariables.
 
 ## Documentation Files
 

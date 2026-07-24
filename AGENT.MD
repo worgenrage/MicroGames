@@ -92,7 +92,10 @@
 - Pending roll state must not persist through `/reload` because scheduled roll timers do not survive reload.
 - The UI should prominently show the winner number and matching player name after a roll.
 - Winner display should be visually separated from normal status text with a highlighted panel/color.
-- Winner buttons should send `You win ROUND X come closer! :)` through say or whisper as separate explicit actions.
+- Winner buttons should send `You win ROUND X! Your MG number #N was rolled. Come closer! :)` through say or whisper as separate explicit actions.
+- Single Raid Control should expose a prominent, persisted `Auto Announce winner + whisper` checkbox that defaults to off.
+- When enabled, a valid online Single Raid winner should queue `{rt1} ROUND X WINNER: [PlayerName] - MG #N! {rt1}` in raid chat and whisper the winner message.
+- Automatic winner messages must use the throttled visible-chat queue, pause during chat lockdown, report partial failures, and never run for invalid/offline rolls, timeouts, Multi Raid rolls, or restored winner state after `/reload`.
 - Reward templates should start with `10 GOLD!`, `20 GOLD!`, and `KROLL BLADE BOSS`.
 - Reward templates must be expandable from the UI.
 - Reward templates must persist through `MicroGamesDB.rewardTemplates`.

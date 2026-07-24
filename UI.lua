@@ -59,6 +59,7 @@ local whisperEditBox
 local whisperPreviewText
 local delayEditBox
 local countdownSoundCheckBox
+local autoAnnounceWinnerCheckBox
 local rosterPageText
 local controlRewardButtonPageText
 local rewardsRewardButtonPageText
@@ -472,6 +473,16 @@ local function UpdateSummary()
                 .. tostring(multiView.manualWinnerCheck.raidId or "-") .. ".")
         else
             winnerMessageText:SetText("Winner message: " .. (winnerMessage or "-"))
+        end
+    end
+
+    if autoAnnounceWinnerCheckBox then
+        autoAnnounceWinnerCheckBox:SetChecked(API.GetAutoAnnounceWinnerEnabled())
+
+        if singleRaidMode then
+            autoAnnounceWinnerCheckBox:Show()
+        else
+            autoAnnounceWinnerCheckBox:Hide()
         end
     end
 
@@ -1244,6 +1255,17 @@ local function CreateControlPage(parent)
             SetStatus("No winner to whisper.")
         end
     end)
+
+    autoAnnounceWinnerCheckBox = CreateCheckBox(page, "Auto Announce winner + whisper", 250, -255, function(self)
+        API.SetAutoAnnounceWinnerEnabled(self:GetChecked())
+        SetStatus("Automatic winner announce + whisper "
+            .. (self:GetChecked() and "enabled." or "disabled."))
+        RefreshAll()
+    end)
+    autoAnnounceWinnerCheckBox.text:SetWidth(128)
+    autoAnnounceWinnerCheckBox.text:SetHeight(34)
+    autoAnnounceWinnerCheckBox.text:SetJustifyH("LEFT")
+    autoAnnounceWinnerCheckBox.text:SetWordWrap(true)
 
     CreateSeparator(page, -288)
 
@@ -2103,6 +2125,10 @@ function UI.Refresh()
     if frame then
         RefreshAll()
     end
+end
+
+function UI.SetStatus(text)
+    SetStatus(text)
 end
 
 function UI.Create()
