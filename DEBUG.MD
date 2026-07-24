@@ -1,5 +1,7 @@
 # Debug Notes
 
+> Historical diagnostic note. The current implementation restores active Single and Multi Raid runtime state after `/reload`, cancels send queues during reset/clear operations, and reports Multi start/stop notification failures separately from the completed local state transition.
+
 ## Single Raid History Looks Incomplete After Multi Raid Work
 
 Context:

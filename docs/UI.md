@@ -18,7 +18,7 @@ Coordinator Setup can record the main raid, assign global numbers across receive
 - Setup: Prepares the live raid layout, shows the recorded name and number snapshot from `StartRaidNumbering()`, and provides setup controls.
 - Rewards: Edits reward yell templates and provides a secondary reward view.
 - History: Shows completed sessions, session details, round results, winners, and rewards.
-- History marks completed sessions as `Single` or `Multi`; Multi sessions include the multi session ID, Coordinator, raid ranges, winner raid IDs, and Assistant verification status.
+- History marks completed sessions as `Single` or `Multi`; Multi sessions include the multi session ID, Coordinator, raid ranges, winner raid IDs, and manual Assistant-check status.
 - Monitoring: Shows live addon-message debug state from another MicroGames user in the same party or raid.
 - Settings: Edits the whisper text and round roll delay.
 - Settings also controls roll countdown raid warning alerts.
@@ -33,6 +33,7 @@ Coordinator Setup can record the main raid, assign global numbers across receive
 - Sending numbers should be a separate explicit action.
 - Sending numbers requires active numbering; stopped snapshots remain visible but cannot be whispered.
 - Round Roll should increment the round, announce `ROUND X`, and then roll after the configured delay.
+- If the round announcement cannot be sent, the roll must remain cancelled and the Control status must warn the game master.
 - Round Roll and reroll require an active game session.
 - `Roll again for ROUND X` should be a smaller centered button below `Round Roll`.
 - Rerolling must not increment or change the current round.
@@ -46,6 +47,7 @@ Coordinator Setup can record the main raid, assign global numbers across receive
 - Setup controls such as move GM, record raid, send numbers, and clear raid should live on the Setup tab.
 - Setup controls should write to a Setup-local status line, not the Control status line.
 - While a game session is active or a roll is pending, setup controls and per-player number sends must be disabled/greyed.
+- Multi Raid Setup buttons must also reflect roster, assignment, queue, invite, and game-session readiness instead of relying only on API error responses.
 - Tabs must stay inside the main window bounds, not below or outside the frame.
 - The main window should use a high enough frame strata/level to avoid click-through into action bar addons.
 - Reward yell templates should be sent only by explicit button press.
@@ -72,6 +74,7 @@ Coordinator Setup can record the main raid, assign global numbers across receive
 - Multi Raid `Send Numbers` calls `addon.API.SendMultiRaidNumbers()`; the Coordinator whispers main-raid players and Assistants automatically whisper their own assigned players.
 - Multi Raid `Start Multi` calls `addon.API.StartMultiRaidGameSession()` and enables Coordinator multi round rolls.
 - Multi Raid `Stop Multi` calls `addon.API.StopMultiRaidGameSession()` and tells Assistants to mark the multi game stopped.
+- Multi Raid start/stop remains a successful local state transition when only an Assistant notification fails; the Setup status shows that delivery problem as a warning.
 - `Round Roll` calls `addon.API.RoundRoll()`, announces the next round, then rolls after the configured delay.
 - In Multi Raid Coordinator mode, `Round Roll` calls `addon.API.MultiRaidRoundRoll()` and requires an active Multi Raid game session.
 - `Roll again for ROUND X` calls `addon.API.RerollCurrentRound()`.

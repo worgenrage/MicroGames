@@ -56,6 +56,7 @@ Multi Raid mode is designed for one Coordinator and one or more accepted Assista
 - Assignment chunks are sent to Assistants through addon-message whispers.
 - The Coordinator starts the Multi Raid game session and runs global rolls.
 - Assistants relay Coordinator announcements and results into their own raid chat.
+- When a global roll selects an Assistant raid player, that Assistant verifies the winner manually.
 - Completed Multi Raid sessions are saved into the shared History list.
 
 ## Installation

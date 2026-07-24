@@ -62,7 +62,7 @@ Rationale:
 Use this file for the CurseForge addon logo when a sub-100 KB image is required:
 
 ```text
-assets/microgames-curseforge-logo-512-q85.jpg
+assets/microgames-logo-coin-spotlight-512.jpg
 ```
 
 Keep the PNG variants in the repository as source/reference assets, but do not include them in the addon runtime ZIP by default.

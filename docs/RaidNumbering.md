@@ -54,6 +54,8 @@ If the live raid roster changes after a verified move and before recording, the 
 - Single Raid mode is intended to be driven by the game master's client.
 - Multi Raid mode supports a Coordinator plus accepted Assistants using addon-message whispers.
 - Multi Raid roster and assignment payloads are chunked and sent through the internal throttled addon-message queue.
+- Incomplete, duplicated, out-of-range, or mismatched roster and assignment chunk sequences are rejected instead of producing partial global numbering.
+- Clearing recorded data or resetting the addon cancels pending chat and addon-message queues.
 
 ## API
 
@@ -98,14 +100,5 @@ local ok, queuedCountOrReason = addon.API.SendNumbers()
 
 `addon.API.SendNumbers()` queues one whisper per recorded player while numbering is active. The queue sends gradually to avoid WoW chat spam limits, and progress is exposed through `addon.API.GetSendQueueView()`.
 The whisper text is stored in `MicroGamesDB.numberWhisperText`.
-
-Compatibility aliases are currently available:
-
-```lua
-addon.API.AssignRaidNumbers
-addon.API.ClearRaidNumbers
-addon.API.GetAssignedRaidCount
-addon.API.SendNumberWhispers
-```
 
 Round logic is documented in `docs/Rounds.md`.

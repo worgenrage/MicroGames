@@ -31,9 +31,9 @@ local SendRaidMessage
 local SetLastWinner
 local SetLastInvalidRoll
 local RecordMultiRaidRollResult
-local UpdateMultiRaidWinnerVerification
 local EnsureMultiRaidActiveHistorySession
 local RecordMultiRaidSessionRound
+local PersistMultiRaidActiveSessionState
 local QueueNumberWhisper
 local QueueMultiRaidWhisper
 local HandleMultiRaidRollResult
@@ -554,8 +554,15 @@ end
 
 local function BuildMonitoringSnapshot(eventName)
     local session = EnsureSettings().activeSession
-    local sessionActive = type(session) == "table" and session.status == "active"
+    local multiState = EnsureMultiRaidState()
+    local sessionActive = (type(session) == "table" and session.status == "active")
+        or multiState.gameStatus == "active"
     local rewardCount, rewardText = BuildMonitoringRewardText()
+    local playerCount = assignedCount
+
+    if API.GetSessionMode() == SESSION_MODE_MULTI_COORDINATOR then
+        playerCount = multiState.totalAssigned or 0
+    end
 
     return {
         event = SanitizeMonitoringValue(eventName or "STATE", 24),
@@ -563,7 +570,7 @@ local function BuildMonitoringSnapshot(eventName)
         sender = SanitizeMonitoringValue(UnitName("player") or "-", 40),
         session = sessionActive and "active" or "inactive",
         round = tostring(currentRound or 0),
-        players = tostring(assignedCount or 0),
+        players = tostring(playerCount or 0),
         pending = pendingRollRound and tostring(pendingRollRound) or "-",
         winnerNumber = lastWinnerNumber and tostring(lastWinnerNumber) or "-",
         winnerName = SanitizeMonitoringValue(lastWinnerName or "-", 40),
@@ -763,84 +770,6 @@ local function HandleMultiRaidReject(message, sender)
     end
 end
 
-local function HandleMultiRaidVerifyWinner(message, sender)
-    local state = EnsureMultiRaidState()
-    local winnerName = message.value2
-    local online
-    local responseType
-
-    if API.GetSessionMode() ~= SESSION_MODE_MULTI_ASSISTANT then
-        return
-    end
-
-    if state.acceptedCoordinator ~= sender or state.sessionId ~= message.sessionId then
-        AddMultiRaidLog("Ignored winner verify from unauthorized sender " .. tostring(sender) .. ".")
-        return
-    end
-
-    online = IsSnapshotPlayerOnline(winnerName)
-    responseType = online and "WINNER_ONLINE" or "WINNER_OFFLINE"
-    SendMultiRaidWhisper(responseType, sender, message.sessionId, state.assistantRaidId, message.value1, winnerName)
-    AddMultiRaidLog("Winner verify: #" .. tostring(message.value1 or "-")
-        .. " " .. tostring(winnerName or "-")
-        .. " is " .. (online and "online" or "offline") .. ".")
-
-    if addon.UI and addon.UI.Refresh then
-        addon.UI.Refresh()
-    end
-end
-
-local function HandleMultiRaidWinnerStatus(message, sender)
-    local state = EnsureMultiRaidState()
-    local assistant
-
-    if API.GetSessionMode() ~= SESSION_MODE_MULTI_COORDINATOR then
-        return
-    end
-
-    if message.sessionId ~= state.sessionId then
-        return
-    end
-
-    assistant = FindAssistantBySender(state, sender)
-
-    if not assistant or assistant.status ~= "accepted" then
-        AddMultiRaidLog("Ignored winner status from unknown assistant " .. tostring(sender) .. ".")
-        return
-    end
-
-    assistant.lastWinnerVerifyAt = GetTimestamp()
-    assistant.lastWinnerVerifyNumber = message.value1
-    assistant.lastWinnerVerifyName = message.value2
-    assistant.lastWinnerVerifyStatus = message.messageType
-
-    AddMultiRaidLog("Winner verify from " .. tostring(sender)
-        .. ": #" .. tostring(message.value1 or "-")
-        .. " " .. tostring(message.value2 or "-")
-        .. " " .. tostring(message.messageType) .. ".")
-
-    if message.messageType == "WINNER_OFFLINE" then
-        SetLastInvalidRoll(currentRound, tonumber(message.value1), message.value2, "OFFLINE")
-        RecordMultiRaidRollResult(currentRound, tonumber(message.value1), {
-            name = message.value2,
-            raidId = assistant.raidId,
-            assistantName = assistant.senderName or assistant.targetName
-        }, true, "OFFLINE")
-        API.RelayMultiRaidMessage("Offline winner #" .. tostring(message.value1 or "-")
-            .. " " .. tostring(message.value2 or "-")
-            .. ". Roll again.")
-    elseif message.messageType == "WINNER_ONLINE" then
-        UpdateMultiRaidWinnerVerification(currentRound, tonumber(message.value1), message.value2, assistant.raidId, "ASSISTANT_ONLINE")
-        API.RelayMultiRaidMessage("Winner confirmed: #" .. tostring(message.value1 or "-")
-            .. " " .. tostring(message.value2 or "-")
-            .. " - Raid " .. tostring(assistant.raidId or "-"))
-    end
-
-    if addon.UI and addon.UI.Refresh then
-        addon.UI.Refresh()
-    end
-end
-
 local function GetRosterAssistant(state, sender, message)
     local assistant = FindAssistantBySender(state, sender)
 
@@ -849,6 +778,10 @@ local function GetRosterAssistant(state, sender, message)
     end
 
     if message.sessionId ~= state.sessionId then
+        return nil
+    end
+
+    if message.raidId and assistant.raidId ~= message.raidId then
         return nil
     end
 
@@ -932,6 +865,8 @@ local function HandleMultiRaidRosterBegin(message, sender)
     local state = EnsureMultiRaidState()
     local assistant
     local key
+    local expectedCount = tonumber(message.value1)
+    local rosterVersion = tonumber(message.value2)
 
     if API.GetSessionMode() ~= SESSION_MODE_MULTI_COORDINATOR then
         return
@@ -939,8 +874,21 @@ local function HandleMultiRaidRosterBegin(message, sender)
 
     assistant = GetRosterAssistant(state, sender, message)
 
-    if not assistant then
+    if not assistant or assistant.status ~= "accepted" then
         AddMultiRaidLog("Ignored roster from unknown assistant " .. tostring(sender) .. ".")
+        return
+    end
+
+    if not expectedCount
+        or expectedCount < 1
+        or expectedCount > MAX_RAID_MEMBERS
+        or expectedCount ~= math.floor(expectedCount)
+        or not rosterVersion
+        or rosterVersion < 1
+    then
+        assistant.rosterStatus = "invalid"
+        assistant.rosterReason = "INVALID_ROSTER_BEGIN"
+        AddMultiRaidLog("Rejected invalid roster header from " .. tostring(sender) .. ".")
         return
     end
 
@@ -948,12 +896,15 @@ local function HandleMultiRaidRosterBegin(message, sender)
     state.rosterBuffers[key] = {
         sender = sender,
         raidId = message.raidId,
-        expectedCount = tonumber(message.value1) or 0,
-        rosterVersion = tonumber(message.value2) or 0,
-        rows = {}
+        expectedCount = expectedCount,
+        rosterVersion = rosterVersion,
+        rows = {},
+        names = {},
+        receivedCount = 0,
+        invalidReason = nil
     }
     assistant.rosterStatus = "receiving"
-    assistant.expectedCount = tonumber(message.value1) or 0
+    assistant.expectedCount = expectedCount
     AddMultiRaidLog("Roster receiving from " .. tostring(sender) .. " (" .. tostring(assistant.expectedCount) .. ").")
 end
 
@@ -976,10 +927,33 @@ local function HandleMultiRaidRosterRow(message, sender)
 
     rowIndex = tonumber(message.value1)
 
-    if rowIndex and message.value2 and message.value2 ~= "-" then
+    if not rowIndex
+        or rowIndex < 1
+        or rowIndex > buffer.expectedCount
+        or rowIndex ~= math.floor(rowIndex)
+        or not message.value2
+        or message.value2 == "-"
+    then
+        buffer.invalidReason = "INVALID_ROSTER_ROW"
+        return
+    end
+
+    if buffer.rows[rowIndex] then
+        buffer.invalidReason = "DUPLICATE_ROSTER_INDEX"
+        return
+    end
+
+    if buffer.names[message.value2] then
+        buffer.invalidReason = "DUPLICATE_ROSTER_NAME"
+        return
+    end
+
+    if not buffer.invalidReason then
         buffer.rows[rowIndex] = {
             name = message.value2
         }
+        buffer.names[message.value2] = true
+        buffer.receivedCount = buffer.receivedCount + 1
     end
 end
 
@@ -989,6 +963,8 @@ local function HandleMultiRaidRosterEnd(message, sender)
     local key
     local buffer
     local roster = {}
+    local endCount = tonumber(message.value1)
+    local endVersion = tonumber(message.value2)
 
     if API.GetSessionMode() ~= SESSION_MODE_MULTI_COORDINATOR then
         return
@@ -1007,18 +983,40 @@ local function HandleMultiRaidRosterEnd(message, sender)
         return
     end
 
+    if buffer.invalidReason
+        or endCount ~= buffer.expectedCount
+        or endVersion ~= buffer.rosterVersion
+        or buffer.receivedCount ~= buffer.expectedCount
+    then
+        assistant.rosterStatus = "incomplete"
+        assistant.rosterReason = buffer.invalidReason or "ROSTER_CHUNK_MISMATCH"
+        state.rosterBuffers[key] = nil
+        AddMultiRaidLog("Rejected incomplete roster from " .. tostring(sender)
+            .. ": " .. tostring(assistant.rosterReason) .. ".")
+        RefreshUI()
+        return
+    end
+
     for index = 1, buffer.expectedCount do
-        if buffer.rows[index] and buffer.rows[index].name then
-            roster[#roster + 1] = {
-                name = buffer.rows[index].name
-            }
+        if not buffer.rows[index] or not buffer.rows[index].name then
+            assistant.rosterStatus = "incomplete"
+            assistant.rosterReason = "MISSING_ROSTER_ROW"
+            state.rosterBuffers[key] = nil
+            AddMultiRaidLog("Rejected roster with missing row from " .. tostring(sender) .. ".")
+            RefreshUI()
+            return
         end
+
+        roster[#roster + 1] = {
+            name = buffer.rows[index].name
+        }
     end
 
     assistant.roster = roster
     assistant.eligibleCount = #roster
     assistant.rosterVersion = buffer.rosterVersion
     assistant.rosterStatus = "received"
+    assistant.rosterReason = nil
     assistant.lastRosterAt = GetTimestamp()
     state.rosterBuffers[key] = nil
     AddMultiRaidLog("Roster received from " .. tostring(sender) .. ": " .. tostring(#roster) .. " eligible.")
@@ -1032,6 +1030,10 @@ local function HandleMultiRaidAssignBegin(message, sender)
     local state = EnsureMultiRaidState()
     local rangeText = message.value1 or "-"
     local startNumber, endNumber = string.match(rangeText, "^(%d+)%-(%d+)$")
+    local expectedCount = tonumber(message.value2)
+
+    startNumber = tonumber(startNumber)
+    endNumber = tonumber(endNumber)
 
     if API.GetSessionMode() ~= SESSION_MODE_MULTI_ASSISTANT then
         return
@@ -1042,10 +1044,36 @@ local function HandleMultiRaidAssignBegin(message, sender)
         return
     end
 
-    state.assignmentBuffer = {}
-    state.assignedRangeStart = tonumber(startNumber)
-    state.assignedRangeEnd = tonumber(endNumber)
-    state.assignmentExpectedCount = tonumber(message.value2) or 0
+    if message.raidId ~= state.assistantRaidId
+        or not startNumber
+        or not endNumber
+        or not expectedCount
+        or expectedCount < 1
+        or expectedCount > MAX_RAID_MEMBERS
+        or expectedCount ~= math.floor(expectedCount)
+        or endNumber - startNumber + 1 ~= expectedCount
+    then
+        state.assignmentBuffer = nil
+        state.assignmentStatus = "invalid"
+        state.assignmentError = "INVALID_ASSIGNMENT_BEGIN"
+        AddMultiRaidLog("Rejected invalid assignment header.")
+        RefreshUI()
+        return
+    end
+
+    state.assignmentBuffer = {
+        rows = {},
+        byNumber = {},
+        byName = {},
+        receivedCount = 0,
+        rangeStart = startNumber,
+        rangeEnd = endNumber,
+        expectedCount = expectedCount,
+        invalidReason = nil
+    }
+    state.assignedRangeStart = startNumber
+    state.assignedRangeEnd = endNumber
+    state.assignmentExpectedCount = expectedCount
     state.assignmentStatus = "receiving"
     AddMultiRaidLog("Assignment receiving: " .. tostring(rangeText) .. ".")
 end
@@ -1053,6 +1081,7 @@ end
 local function HandleMultiRaidAssignRow(message, sender)
     local state = EnsureMultiRaidState()
     local number = tonumber(message.value1)
+    local buffer
 
     if API.GetSessionMode() ~= SESSION_MODE_MULTI_ASSISTANT then
         return
@@ -1062,22 +1091,54 @@ local function HandleMultiRaidAssignRow(message, sender)
         return
     end
 
-    if type(state.assignmentBuffer) ~= "table" then
+    buffer = state.assignmentBuffer
+
+    if type(buffer) ~= "table" then
         return
     end
 
-    if number and message.value2 and message.value2 ~= "-" then
-        state.assignmentBuffer[#state.assignmentBuffer + 1] = {
-            number = number,
-            name = message.value2
-        }
+    if message.raidId ~= state.assistantRaidId
+        or not number
+        or number < buffer.rangeStart
+        or number > buffer.rangeEnd
+        or number ~= math.floor(number)
+        or not message.value2
+        or message.value2 == "-"
+    then
+        buffer.invalidReason = "INVALID_ASSIGNMENT_ROW"
+        return
     end
+
+    if buffer.byNumber[number] then
+        buffer.invalidReason = "DUPLICATE_ASSIGNMENT_NUMBER"
+        return
+    end
+
+    if buffer.byName[message.value2] then
+        buffer.invalidReason = "DUPLICATE_ASSIGNMENT_NAME"
+        return
+    end
+
+    buffer.rows[#buffer.rows + 1] = {
+        number = number,
+        name = message.value2
+    }
+    buffer.byNumber[number] = true
+    buffer.byName[message.value2] = true
+    buffer.receivedCount = buffer.receivedCount + 1
 end
 
 local function HandleMultiRaidAssignEnd(message, sender)
     local state = EnsureMultiRaidState()
     local byName = {}
     local byNumber = {}
+    local buffer
+    local rangeText = message.value1 or "-"
+    local endStart, endNumber = string.match(rangeText, "^(%d+)%-(%d+)$")
+    local endCount = tonumber(message.value2)
+
+    endStart = tonumber(endStart)
+    endNumber = tonumber(endNumber)
 
     if API.GetSessionMode() ~= SESSION_MODE_MULTI_ASSISTANT then
         return
@@ -1087,22 +1148,44 @@ local function HandleMultiRaidAssignEnd(message, sender)
         return
     end
 
-    if type(state.assignmentBuffer) ~= "table" then
+    buffer = state.assignmentBuffer
+
+    if type(buffer) ~= "table" then
         return
     end
 
-    for index = 1, #state.assignmentBuffer do
-        local entry = state.assignmentBuffer[index]
+    if message.raidId ~= state.assistantRaidId
+        or buffer.invalidReason
+        or endStart ~= buffer.rangeStart
+        or endNumber ~= buffer.rangeEnd
+        or endCount ~= buffer.expectedCount
+        or buffer.receivedCount ~= buffer.expectedCount
+    then
+        state.assignmentBuffer = nil
+        state.assignmentStatus = "incomplete"
+        state.assignmentError = buffer.invalidReason or "ASSIGNMENT_CHUNK_MISMATCH"
+        AddMultiRaidLog("Rejected incomplete assignment: " .. tostring(state.assignmentError) .. ".")
+        RefreshUI()
+        return
+    end
+
+    table.sort(buffer.rows, function(left, right)
+        return left.number < right.number
+    end)
+
+    for index = 1, #buffer.rows do
+        local entry = buffer.rows[index]
 
         byName[entry.name] = entry.number
         byNumber[entry.number] = entry.name
     end
 
-    state.assignedRoster = state.assignmentBuffer
+    state.assignedRoster = buffer.rows
     state.assignedNumbersByName = byName
     state.assignedNamesByNumber = byNumber
     state.assignmentBuffer = nil
     state.assignmentStatus = "received"
+    state.assignmentError = nil
     state.assignmentReceivedAt = GetTimestamp()
     AddMultiRaidLog("Assignment received: " .. tostring(#state.assignedRoster) .. " players.")
 
@@ -1308,10 +1391,6 @@ local function HandleMultiRaidMessage(payload, sender)
         HandleMultiRaidAccept(message, normalizedSender)
     elseif message.messageType == "REJECT" then
         HandleMultiRaidReject(message, normalizedSender)
-    elseif message.messageType == "VERIFY_WINNER" then
-        HandleMultiRaidVerifyWinner(message, normalizedSender)
-    elseif message.messageType == "WINNER_ONLINE" or message.messageType == "WINNER_OFFLINE" then
-        HandleMultiRaidWinnerStatus(message, normalizedSender)
     elseif message.messageType == "ROSTER_REQUEST" then
         HandleMultiRaidRosterRequest(message, normalizedSender)
     elseif message.messageType == "ROSTER_NOT_READY" then
@@ -1682,6 +1761,52 @@ EnsureMultiRaidActiveHistorySession = function(state)
     return session
 end
 
+PersistMultiRaidActiveSessionState = function()
+    local state = EnsureMultiRaidState()
+    local session = state.activeSession
+
+    if state.gameStatus ~= "active" or type(session) ~= "table" or session.status ~= "active" then
+        return nil
+    end
+
+    session.currentRound = currentRound
+    session.lastWinnerRound = lastWinnerRound
+    session.lastWinnerNumber = lastWinnerNumber
+    session.lastWinnerName = lastWinnerName
+    session.lastInvalidRollRound = lastInvalidRollRound
+    session.lastInvalidRollNumber = lastInvalidRollNumber
+    session.lastInvalidRollName = lastInvalidRollName
+    session.lastInvalidRollReason = lastInvalidRollReason
+    session.pendingRollRound = nil
+    session.pendingRollMax = nil
+
+    return session
+end
+
+local function RestoreMultiRaidActiveSessionState()
+    local state = EnsureMultiRaidState()
+    local session = state.activeSession
+
+    if state.gameStatus ~= "active" or type(session) ~= "table" or session.status ~= "active" then
+        return false
+    end
+
+    currentRound = session.currentRound or 0
+    pendingRollRound = nil
+    pendingRollMax = nil
+    session.pendingRollRound = nil
+    session.pendingRollMax = nil
+    lastWinnerRound = session.lastWinnerRound
+    lastWinnerNumber = session.lastWinnerNumber
+    lastWinnerName = session.lastWinnerName
+    lastInvalidRollRound = session.lastInvalidRollRound
+    lastInvalidRollNumber = session.lastInvalidRollNumber
+    lastInvalidRollName = session.lastInvalidRollName
+    lastInvalidRollReason = session.lastInvalidRollReason
+
+    return true
+end
+
 RecordMultiRaidSessionRound = function(state, roundNumber, rollMax)
     local session = EnsureMultiRaidActiveHistorySession(state)
 
@@ -1697,6 +1822,7 @@ RecordMultiRaidSessionRound = function(state, roundNumber, rollMax)
         rollMax = rollMax or state.totalAssigned or 0,
         sessionType = "multi"
     }
+    PersistMultiRaidActiveSessionState()
 end
 
 RecordMultiRaidRollResult = function(roundNumber, rollNumber, winner, invalid, invalidReason, verifyStatus)
@@ -1752,27 +1878,7 @@ RecordMultiRaidRollResult = function(roundNumber, rollNumber, winner, invalid, i
                 verifyStatus = verifyStatus
             }
 
-            return
-        end
-    end
-end
-
-UpdateMultiRaidWinnerVerification = function(roundNumber, winnerNumber, winnerName, raidId, verifyStatus)
-    local state = EnsureMultiRaidState()
-    local session = state.activeSession
-
-    if type(session) ~= "table" or type(session.rounds) ~= "table" then
-        return
-    end
-
-    for index = #session.rounds, 1, -1 do
-        local roundEntry = session.rounds[index]
-
-        if roundEntry.round == roundNumber and roundEntry.rollNumber == winnerNumber then
-            roundEntry.verifyStatus = verifyStatus
-            roundEntry.winnerName = winnerName or roundEntry.winnerName
-            roundEntry.winnerRaidId = raidId or roundEntry.winnerRaidId
-            roundEntry.verifyAt = GetTimestamp()
+            PersistMultiRaidActiveSessionState()
             return
         end
     end
@@ -2511,6 +2617,7 @@ function API.ResetRaidNumbering()
         return false, "ROSTER_LOCKED"
     end
 
+    API.CancelSendQueues()
     numbersByName = {}
     namesByNumber = {}
     assignedCount = 0
@@ -2533,6 +2640,7 @@ function API.ResetRaidNumbering()
 end
 
 function API.ResetAllData()
+    API.CancelSendQueues()
     StopMonitoringTicker()
     monitoringBroadcastEnabled = false
     monitoringLastSnapshot = nil
@@ -2819,11 +2927,7 @@ function API.GetMultiRaidView()
             numberWhisperStatus = assistant.numberWhisperStatus,
             numberWhisperSentCount = assistant.numberWhisperSentCount,
             numberWhisperSentAt = assistant.numberWhisperSentAt,
-            numberWhisperError = assistant.numberWhisperError,
-            lastWinnerVerifyAt = assistant.lastWinnerVerifyAt,
-            lastWinnerVerifyNumber = assistant.lastWinnerVerifyNumber,
-            lastWinnerVerifyName = assistant.lastWinnerVerifyName,
-            lastWinnerVerifyStatus = assistant.lastWinnerVerifyStatus
+            numberWhisperError = assistant.numberWhisperError
         }
     end
 
@@ -2860,6 +2964,7 @@ function API.GetMultiRaidView()
         gameStatus = state.gameStatus,
         startedAt = state.startedAt,
         stoppedAt = state.stoppedAt,
+        manualWinnerCheck = state.manualWinnerCheck,
         lastRosterRequestedAt = state.lastRosterRequestedAt,
         pendingInvite = state.pendingInvite,
         assistants = assistants,
@@ -2899,8 +3004,17 @@ function API.CancelSendQueues()
     StopQueueTicker(addonSendQueue)
     chatSendQueue.items = {}
     addonSendQueue.items = {}
-    chatSendQueue.active = false
-    addonSendQueue.active = false
+    chatSendQueue.total = 0
+    chatSendQueue.sent = 0
+    chatSendQueue.failed = 0
+    chatSendQueue.label = nil
+    chatSendQueue.onComplete = nil
+    chatSendQueue.completedAt = nil
+    addonSendQueue.total = 0
+    addonSendQueue.sent = 0
+    addonSendQueue.failed = 0
+    addonSendQueue.label = nil
+    addonSendQueue.completedAt = nil
     ClearQueuePause(chatSendQueue)
     ClearQueuePause(addonSendQueue)
     RefreshUI()
@@ -3023,6 +3137,7 @@ function API.ClearMultiRaidSession()
         return false, "SESSION_MODE_LOCKED"
     end
 
+    API.CancelSendQueues()
     settings.multiRaid = {}
     EnsureMultiRaidState()
 
@@ -3330,6 +3445,10 @@ function API.RequestMultiRaidRosters()
         return false, "NOT_COORDINATOR_MODE"
     end
 
+    if state.gameStatus == "active" or API.HasPendingRoll() then
+        return false, "SESSION_MODE_LOCKED"
+    end
+
     EnsureCoordinatorSession()
 
     for index = 1, #state.assistants do
@@ -3352,46 +3471,10 @@ function API.RequestMultiRaidRosters()
     AddMultiRaidLog("Roster requests sent: " .. tostring(sentCount) .. ".")
 
     if sentCount > 0 then
-        return true, sentCount
+        return true, sentCount, lastError
     end
 
     return false, lastError or "NO_ACCEPTED_ASSISTANTS"
-end
-
-function API.RequestMultiRaidWinnerVerification(assistantName, winnerNumber, winnerName, raidId)
-    local state = EnsureMultiRaidState()
-    local assistant = FindAssistantBySender(state, assistantName)
-    local target
-    local ok, result
-
-    if API.GetSessionMode() ~= SESSION_MODE_MULTI_COORDINATOR then
-        return false, "NOT_COORDINATOR_MODE"
-    end
-
-    if not assistant or assistant.status ~= "accepted" then
-        return false, "ASSISTANT_NOT_ACCEPTED"
-    end
-
-    target = assistant.senderName or assistant.targetName
-    ok, result = SendMultiRaidWhisper(
-        "VERIFY_WINNER",
-        target,
-        state.sessionId,
-        raidId or assistant.raidId,
-        tostring(winnerNumber or "-"),
-        winnerName or "-"
-    )
-
-    if ok then
-        AddMultiRaidLog("Winner verify requested from " .. tostring(target)
-            .. " for #" .. tostring(winnerNumber or "-")
-            .. " " .. tostring(winnerName or "-") .. ".")
-        return true, "VERIFY_SENT"
-    end
-
-    AddMultiRaidLog("Winner verify request failed: " .. tostring(result) .. ".")
-
-    return false, result
 end
 
 function API.RelayMultiRaidMessage(message, targetRaidId)
@@ -3400,11 +3483,11 @@ function API.RelayMultiRaidMessage(message, targetRaidId)
     local lastError = nil
 
     if API.GetSessionMode() ~= SESSION_MODE_MULTI_COORDINATOR then
-        return false, "NOT_COORDINATOR_MODE"
+        return false, "NOT_COORDINATOR_MODE", nil
     end
 
     if type(message) ~= "string" or message == "" then
-        return false, "MESSAGE_REQUIRED"
+        return false, "MESSAGE_REQUIRED", nil
     end
 
     for index = 1, #state.assistants do
@@ -3427,10 +3510,10 @@ function API.RelayMultiRaidMessage(message, targetRaidId)
     AddMultiRaidLog("Relay sent to assistants: " .. tostring(sentCount) .. " | " .. tostring(message))
 
     if sentCount > 0 then
-        return true, sentCount
+        return true, sentCount, lastError
     end
 
-    return false, lastError or "NO_ACCEPTED_ASSISTANTS"
+    return false, lastError or "NO_ACCEPTED_ASSISTANTS", nil
 end
 
 function API.SendMultiRaidNumbers()
@@ -3442,6 +3525,14 @@ function API.SendMultiRaidNumbers()
 
     if API.GetSessionMode() ~= SESSION_MODE_MULTI_COORDINATOR then
         return false, "NOT_COORDINATOR_MODE"
+    end
+
+    if state.gameStatus == "active" or API.HasPendingRoll() then
+        return false, "SESSION_MODE_LOCKED"
+    end
+
+    if addonSendQueue.active or addonSendQueue.paused or #addonSendQueue.items > 0 then
+        return false, "SEND_QUEUE_ACTIVE"
     end
 
     if state.assignmentsStatus ~= "assigned" or type(state.globalAssignments) ~= "table" then
@@ -3516,6 +3607,9 @@ function API.StartMultiRaidGameSession()
     local state = EnsureCoordinatorSession()
     local sentCount = 0
     local lastError = nil
+    local relayOk
+    local relayResult
+    local relayWarning
 
     if API.GetSessionMode() ~= SESSION_MODE_MULTI_COORDINATOR then
         return false, "NOT_COORDINATOR_MODE"
@@ -3529,6 +3623,10 @@ function API.StartMultiRaidGameSession()
         return false, "GLOBAL_ASSIGNMENTS_REQUIRED"
     end
 
+    if addonSendQueue.active or addonSendQueue.paused or #addonSendQueue.items > 0 then
+        return false, "ASSIGNMENT_SYNC_PENDING"
+    end
+
     currentRound = 0
     pendingRollRound = nil
     pendingRollMax = nil
@@ -3539,11 +3637,13 @@ function API.StartMultiRaidGameSession()
     lastInvalidRollNumber = nil
     lastInvalidRollName = nil
     lastInvalidRollReason = nil
+    state.manualWinnerCheck = nil
     state.gameStatus = "active"
     state.startedAt = GetTimestamp()
     state.stoppedAt = nil
     state.activeSession = nil
     EnsureMultiRaidActiveHistorySession(state)
+    PersistMultiRaidActiveSessionState()
 
     for index = 1, #state.assistants do
         local assistant = state.assistants[index]
@@ -3561,13 +3661,24 @@ function API.StartMultiRaidGameSession()
     end
 
     SendRaidMessage("Multi raid game started. Players: " .. tostring(state.totalAssigned or 0))
-    API.RelayMultiRaidMessage("Multi raid game started. Players: " .. tostring(state.totalAssigned or 0))
+    relayOk, relayResult, relayWarning = API.RelayMultiRaidMessage(
+        "Multi raid game started. Players: " .. tostring(state.totalAssigned or 0)
+    )
+
+    if not relayOk and relayResult ~= "NO_ACCEPTED_ASSISTANTS" then
+        lastError = relayResult
+    elseif relayWarning then
+        lastError = relayWarning
+    end
+
     AddMultiRaidLog("Multi game started. Assistant notifications: " .. tostring(sentCount) .. ".")
 
     if lastError then
-        return false, lastError
+        state.lastGameNotificationError = lastError
+        return true, state.totalAssigned or 0, lastError
     end
 
+    state.lastGameNotificationError = nil
     return true, state.totalAssigned or 0
 end
 
@@ -3575,6 +3686,9 @@ function API.StopMultiRaidGameSession()
     local state = EnsureMultiRaidState()
     local sentCount = 0
     local lastError = nil
+    local relayOk
+    local relayResult
+    local relayWarning
 
     if API.GetSessionMode() ~= SESSION_MODE_MULTI_COORDINATOR then
         return false, "NOT_COORDINATOR_MODE"
@@ -3626,13 +3740,34 @@ function API.StopMultiRaidGameSession()
     end
 
     SendRaidMessage("Multi raid game stopped.")
-    API.RelayMultiRaidMessage("Multi raid game stopped.")
-    AddMultiRaidLog("Multi game stopped. Assistant notifications: " .. tostring(sentCount) .. ".")
+    relayOk, relayResult, relayWarning = API.RelayMultiRaidMessage("Multi raid game stopped.")
 
-    if lastError then
-        return false, lastError
+    if not relayOk and relayResult ~= "NO_ACCEPTED_ASSISTANTS" then
+        lastError = relayResult
+    elseif relayWarning then
+        lastError = relayWarning
     end
 
+    AddMultiRaidLog("Multi game stopped. Assistant notifications: " .. tostring(sentCount) .. ".")
+    API.StopMonitoringBroadcast()
+    currentRound = 0
+    pendingRollRound = nil
+    pendingRollMax = nil
+    lastWinnerRound = nil
+    lastWinnerNumber = nil
+    lastWinnerName = nil
+    lastInvalidRollRound = nil
+    lastInvalidRollNumber = nil
+    lastInvalidRollName = nil
+    lastInvalidRollReason = nil
+    state.manualWinnerCheck = nil
+
+    if lastError then
+        state.lastGameNotificationError = lastError
+        return true, "MULTI_GAME_STOPPED", lastError
+    end
+
+    state.lastGameNotificationError = nil
     return true, "MULTI_GAME_STOPPED"
 end
 
@@ -3660,6 +3795,7 @@ HandleMultiRaidRollResult = function(roundNumber, roll, rollMax)
     API.RelayMultiRaidMessage(resultMessage)
 
     if not winner then
+        state.manualWinnerCheck = nil
         SetLastInvalidRoll(roundNumber, roll, "-", "NO_GLOBAL_ASSIGNMENT")
         RecordMultiRaidRollResult(roundNumber, roll, nil, true, "NO_GLOBAL_ASSIGNMENT")
         API.RelayMultiRaidMessage("Invalid roll #" .. tostring(roll) .. ": no global assignment. Roll again.")
@@ -3667,6 +3803,7 @@ HandleMultiRaidRollResult = function(roundNumber, roll, rollMax)
     end
 
     if winner.raidId == 1 then
+        state.manualWinnerCheck = nil
         if not IsSnapshotPlayerOnline(winner.name) then
             SetLastInvalidRoll(roundNumber, roll, winner.name, "OFFLINE")
             RecordMultiRaidRollResult(roundNumber, roll, winner, true, "OFFLINE")
@@ -3683,9 +3820,18 @@ HandleMultiRaidRollResult = function(roundNumber, roll, rollMax)
 
     SetLastWinner(roundNumber, roll)
     lastWinnerName = winner.name
-    RecordMultiRaidRollResult(roundNumber, roll, winner, false, nil, "PENDING_ASSISTANT_VERIFY")
-    API.RelayMultiRaidMessage("Winner pending verify: #" .. tostring(roll) .. " " .. tostring(winner.name) .. " - Raid " .. tostring(winner.raidId))
-    API.RequestMultiRaidWinnerVerification(winner.assistantName, roll, winner.name, winner.raidId)
+    state.manualWinnerCheck = {
+        round = roundNumber,
+        number = roll,
+        name = winner.name,
+        raidId = winner.raidId,
+        assistantName = winner.assistantName
+    }
+    RecordMultiRaidRollResult(roundNumber, roll, winner, false, nil, "MANUAL_ASSISTANT_CHECK")
+    API.RelayMultiRaidMessage("Winner: #" .. tostring(roll) .. " " .. tostring(winner.name)
+        .. " - Raid " .. tostring(winner.raidId) .. " - Assistant check required")
+    AddMultiRaidLog("Manual Assistant winner check required: #" .. tostring(roll)
+        .. " " .. tostring(winner.name) .. " - Raid " .. tostring(winner.raidId) .. ".")
 end
 
 function API.MultiRaidRoundRoll()
@@ -3693,6 +3839,9 @@ function API.MultiRaidRoundRoll()
     local delay = API.GetRoundRollDelay()
     local rollRound
     local rollMax = state.totalAssigned or 0
+    local nextRound
+    local announced
+    local announceReason
 
     if API.GetSessionMode() ~= SESSION_MODE_MULTI_COORDINATOR then
         return false, "NOT_COORDINATOR_MODE"
@@ -3714,11 +3863,18 @@ function API.MultiRaidRoundRoll()
         return false, "INVALID_ROLL_NEEDS_REROLL"
     end
 
-    currentRound = currentRound + 1
+    nextRound = currentRound + 1
+    announced, announceReason = SendRaidMessage(API.BuildRoundMessage(nextRound))
+
+    if not announced then
+        AddMultiRaidLog("Round announcement failed; roll cancelled: " .. tostring(announceReason) .. ".")
+        return false, "ROUND_ANNOUNCEMENT_FAILED_" .. tostring(announceReason or "SEND_FAILED")
+    end
+
+    currentRound = nextRound
     pendingRollRound = currentRound
     pendingRollMax = rollMax
     rollRound = currentRound
-    SendRaidMessage(API.BuildRoundMessage(currentRound))
     API.RelayMultiRaidMessage(API.BuildRoundMessage(currentRound))
     API.RelayMultiRaidMessage("Rolling 1-" .. tostring(rollMax) .. "...")
     RecordMultiRaidSessionRound(state, currentRound, rollMax)
@@ -3831,8 +3987,9 @@ end
 
 function API.StartMonitoringBroadcast()
     local ok, result
+    local multiActive = EnsureMultiRaidState().gameStatus == "active"
 
-    if not API.HasActiveGameSession() then
+    if not API.HasActiveGameSession() and not multiActive then
         return false, "NO_ACTIVE_SESSION"
     end
 
@@ -3874,6 +4031,7 @@ end
 function API.GetMonitoringView()
     local logCopy = {}
     local channel = GetMonitoringBroadcastChannel()
+    local multiActive = EnsureMultiRaidState().gameStatus == "active"
 
     for index = 1, #monitoringLog do
         logCopy[index] = monitoringLog[index]
@@ -3886,7 +4044,7 @@ function API.GetMonitoringView()
         liveEnabled = monitoringBroadcastEnabled,
         liveInterval = MONITORING_LIVE_INTERVAL,
         observedSender = monitoringObservedSender,
-        gameActive = API.HasActiveGameSession(),
+        gameActive = API.HasActiveGameSession() or multiActive,
         localState = BuildMonitoringSnapshot("LOCAL")
     }
 end
@@ -4207,6 +4365,9 @@ function API.RoundRoll()
     local delay = API.GetRoundRollDelay()
     local rollRound
     local rollMax
+    local nextRound
+    local announced
+    local announceReason
 
     if not API.HasActiveGameSession() then
         return false, "NO_ACTIVE_SESSION"
@@ -4224,7 +4385,14 @@ function API.RoundRoll()
         return false, "INVALID_ROLL_NEEDS_REROLL"
     end
 
-    currentRound = currentRound + 1
+    nextRound = currentRound + 1
+    announced, announceReason = SendRaidMessage(API.BuildRoundMessage(nextRound))
+
+    if not announced then
+        return false, "ROUND_ANNOUNCEMENT_FAILED_" .. tostring(announceReason or "SEND_FAILED")
+    end
+
+    currentRound = nextRound
     pendingRollRound = currentRound
     rollRound = currentRound
     rollMax = assignedCount
@@ -4232,7 +4400,6 @@ function API.RoundRoll()
     RecordSessionRound(currentRound, rollMax)
     PersistActiveSessionState()
 
-    SendRaidMessage(API.BuildRoundMessage(currentRound))
     ScheduleRollCountdown(rollRound, rollMax, delay)
     BroadcastMonitoringState("ROUND_ROLL")
 
@@ -4307,9 +4474,8 @@ function API.RerollCurrentRound()
     return true, rerollRound
 end
 
-API.AssignRaidNumbers = API.StartRaidNumbering
-API.ClearRaidNumbers = API.ResetRaidNumbering
-API.GetAssignedRaidCount = API.CountRaidNumbers
-API.SendNumberWhispers = API.SendNumbers
-
-RestoreActiveSessionState()
+if API.GetSessionMode() == SESSION_MODE_MULTI_COORDINATOR then
+    RestoreMultiRaidActiveSessionState()
+else
+    RestoreActiveSessionState()
+end

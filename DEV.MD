@@ -44,7 +44,7 @@ Current stored fields:
 
 Monitoring data is runtime-only and is not persisted.
 
-Multi-raid setup and runtime coordination data is stored under `MicroGamesDB.multiRaid`.
+Multi-raid setup and runtime coordination data, including `MicroGamesDB.multiRaid.activeSession`, is stored under `MicroGamesDB.multiRaid`.
 
 ## Raid Numbering
 
@@ -110,7 +110,9 @@ Rules:
 - If there is already an active session, `StartGameSession()` returns `ACTIVE_SESSION_EXISTS`.
 - `STOP GAME` stops the active session and appends it to `MicroGamesDB.history`.
 - After `STOP GAME` saves the completed session, runtime roster, round, pending roll, and winner state are cleared so the next game uses a fresh raid snapshot.
-- Active sessions are stored in `MicroGamesDB.activeSession`.
+- Active Single Raid sessions are stored in `MicroGamesDB.activeSession`.
+- Active Multi Raid sessions are stored in `MicroGamesDB.multiRaid.activeSession`.
+- Both session types restore current round, winner, and invalid-roll state after `/reload`; scheduled pending rolls are cleared.
 - Completed sessions are stored in `MicroGamesDB.history`.
 - While a game session is active or a roll is pending, setup controls are locked.
 
@@ -159,6 +161,7 @@ Rules:
 - `RoundRoll()` increments the round counter.
 - `RoundRoll()` and `RerollCurrentRound()` require an active game session.
 - It announces `ROUND X` in raid chat.
+- If the round announcement fails, the action returns `ROUND_ANNOUNCEMENT_FAILED_*`, leaves the round counter unchanged, and does not schedule a roll.
 - After the configured delay, it rolls `RandomRoll(1, assignedCount)`.
 - If `Roll Countdown Sound` is enabled, `RAID_WARNING` countdown messages are sent during the configured delay so raid members receive the normal raid warning alert.
 - `TestRollCountdownSound()` sends a one-off `RAID_WARNING` test message only when `Roll Countdown Sound` is enabled.
@@ -363,13 +366,16 @@ Multi-raid roster sync is Assistant-owned:
 - The Coordinator records its own main raid separately and excludes the Coordinator character.
 - The Coordinator assigns global numbers only after its own roster is recorded and accepted Assistant rosters are received.
 - Assignments are sent to Assistants as chunked addon-message whispers.
+- Roster and assignment receivers reject incomplete, duplicated, out-of-range, and mismatched chunk sequences.
 - The Coordinator can dispatch global number whispers after assignment; the Coordinator whispers main-raid players and Assistants whisper their own assigned local players.
 - Bulk visible whispers and chunked roster/assignment addon messages are throttled through send queues to avoid WoW chat and addon-message rate limits.
 - The Coordinator must start the Multi Raid game session before multi round rolls or rerolls can run.
 - Active multi games lock roster recording, roster sending, and global assignment changes.
 - Coordinator multi-raid round announcements and roll results are relayed by Assistants into their own raid chat.
 - Completed Multi Raid sessions are appended to the same `MicroGamesDB.history` list as Single Raid sessions with `sessionType = "multi"`.
-- Multi Raid history stores the Coordinator, multi session ID, global roster assignments, raid ranges, Assistant summaries, round results, winner raid IDs, Assistant verification status, invalid offline rolls, and rewards.
+- Multi Raid history stores the Coordinator, multi session ID, global roster assignments, raid ranges, Assistant summaries, round results, winner raid IDs, manual Assistant-check status, invalid local-raid offline rolls, and rewards.
+- Winners assigned to an Assistant raid are checked manually by that Assistant; the addon does not send automatic winner verification requests.
+- Resetting Single Raid data, clearing Multi Raid state, or using `RESET ALL` cancels pending send queues.
 
 ### Rewards
 
@@ -447,5 +453,5 @@ git diff --check
 
 ## Known Next Steps
 
-- Add UI disable states for individual Multi Raid setup buttons.
 - Consider embedding ChatThrottleLib later if the internal queues need more adaptive traffic shaping.
+- Add repeatable mocked runtime tests for session restore, chunk rejection, queue cancellation, and announcement failure paths.

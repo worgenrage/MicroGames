@@ -81,6 +81,7 @@
 - The UI should show both the current round and the previous completed round.
 - During `ROUND 1`, there is no previous completed round, so show `-`.
 - Announce rounds in raid chat as `ROUND X`.
+- If the `ROUND X` raid announcement cannot be sent, do not advance the round or schedule the roll; show a clear GM warning.
 - After a short delay, roll from 1 to the recorded eligible raid number count.
 - The roll range must use the `StartRaidNumbering()` snapshot count, not the current live raid size.
 - Use `RandomRoll(1, recordedCount)` for the actual roll; `BuildRollCommand()` is only a display preview.
@@ -120,7 +121,8 @@
 
 ## Game Session Model
 
-- Active games must persist in `MicroGamesDB.activeSession`.
+- Active Single Raid games must persist in `MicroGamesDB.activeSession`.
+- Active Multi Raid games must persist in `MicroGamesDB.multiRaid.activeSession`, including round and winner state restored after `/reload`.
 - Completed games must be appended to `MicroGamesDB.history`.
 - `START GAME` starts or resumes the active session.
 - `START GAME` must not create a second session if one is already active; return/report `ACTIVE_SESSION_EXISTS`.
@@ -148,6 +150,9 @@
 - Multi Raid round rolls and rerolls require an active Multi Raid game session started by the Coordinator.
 - Active Multi Raid games must lock roster recording, roster sending, and global assignment mutation.
 - Completed Multi Raid games are stored in the shared `MicroGamesDB.history` list with `sessionType = "multi"`.
-- Multi Raid history should retain the multi session ID, Coordinator, global assignments, raid ranges, Assistant summaries, winner raid IDs, and Assistant verification status.
+- Multi Raid history should retain the multi session ID, Coordinator, global assignments, raid ranges, Assistant summaries, winner raid IDs, and manual Assistant-check status.
+- Cross-raid winner presence is checked manually by the responsible Assistant; do not send automatic winner verification requests.
+- Roster and assignment chunk receivers must reject incomplete, duplicated, out-of-range, or header/footer-mismatched payloads.
+- Reset and clear operations must cancel pending visible-chat and addon-message queues.
 - Coordinator multi-raid rolls are authoritative, but other raids cannot see the native system roll; Assistants relay Coordinator round and roll result messages into their own raid chat.
 - Assistant relay must only run for the accepted Coordinator/session pair.

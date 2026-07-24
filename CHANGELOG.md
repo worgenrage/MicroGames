@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+## 0.2.6
+
+- Restored active Multi Raid round and winner state after `/reload`.
+- Replaced automatic cross-raid winner verification with an explicit manual Assistant check status.
+- Added strict roster and assignment chunk validation to reject incomplete, duplicated, or mismatched payloads.
+- Cancelled pending chat and addon-message queues when raid data, Multi Raid state, or all SavedVariables are cleared.
+- Reported Multi Raid start/stop notification failures as warnings without misreporting the completed local state change as a failure.
+- Added state-aware disabled controls throughout Multi Raid Setup.
+- Cancelled round rolls when the `ROUND X` raid announcement cannot be sent and added a clear GM warning.
+- Removed obsolete raid-numbering compatibility aliases.
+- Updated Multi Raid, session, UI, and release package documentation.
+
 ## 0.2.5
 
 - Added final coin-style CurseForge logo assets with a highlighted `DICE` coin mark.

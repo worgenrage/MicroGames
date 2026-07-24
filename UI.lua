@@ -87,6 +87,19 @@ local assistantNameEditBox
 local multiCoordinatorSummaryText
 local multiAssistantSummaryText
 local multiSetupStatusText
+local multiAddAssistantButton
+local multiCoordinatorClearButton
+local multiRequestRostersButton
+local multiRecordCoordinatorButton
+local multiAssignNumbersButton
+local multiSendNumbersButton
+local multiStartButton
+local multiStopButton
+local multiAcceptButton
+local multiRejectButton
+local multiAssistantClearButton
+local multiRecordLocalButton
+local multiSendRosterButton
 
 local function SetButtonEnabled(button, enabled)
     if not button then
@@ -195,6 +208,26 @@ local function RefreshMultiRaidSetup()
     local view = API.GetMultiRaidView()
     local assistants = view.assistants or {}
     local log = view.log or {}
+    local queueView = API.GetSendQueueView()
+    local chatQueueBusy = queueView.chat and (queueView.chat.active or queueView.chat.paused)
+    local addonQueueBusy = queueView.addon and (queueView.addon.active or queueView.addon.paused)
+    local gameActive = view.gameStatus == "active"
+    local rollPending = API.HasPendingRoll()
+    local acceptedCount = 0
+    local allAcceptedRostersReady = true
+    local localRosterReady = view.localRosterStatus == "recorded"
+        or view.localRosterStatus == "send_failed"
+        or view.localRosterStatus == "sent"
+
+    for index = 1, #assistants do
+        if assistants[index].status == "accepted" then
+            acceptedCount = acceptedCount + 1
+
+            if assistants[index].rosterStatus ~= "received" then
+                allAcceptedRostersReady = false
+            end
+        end
+    end
 
     if multiCoordinatorSummaryText then
         multiCoordinatorSummaryText:SetText("Session: " .. tostring(view.sessionId or "-")
@@ -210,13 +243,7 @@ local function RefreshMultiRaidSetup()
         local assistant = assistants[index]
 
         if assistant then
-            local verifyText = ""
             local rosterText = assistant.rosterStatus or "not_ready"
-
-            if assistant.lastWinnerVerifyStatus then
-                verifyText = " | " .. tostring(assistant.lastWinnerVerifyNumber or "-")
-                    .. " " .. tostring(assistant.lastWinnerVerifyStatus)
-            end
 
             row:SetText("Raid " .. tostring(assistant.raidId or "-")
                 .. " | " .. tostring(assistant.senderName or assistant.targetName or "-")
@@ -224,8 +251,7 @@ local function RefreshMultiRaidSetup()
                 .. " | " .. tostring(rosterText)
                 .. " " .. tostring(assistant.eligibleCount or "-")
                 .. " | " .. tostring(assistant.rangeStart or "-") .. "-" .. tostring(assistant.rangeEnd or "-")
-                .. " | nums " .. tostring(assistant.numberWhisperStatus or "-")
-                .. verifyText)
+                .. " | nums " .. tostring(assistant.numberWhisperStatus or "-"))
             row:Show()
         else
             row:SetText("")
@@ -265,6 +291,41 @@ local function RefreshMultiRaidSetup()
             row:Hide()
         end
     end
+
+    SetButtonEnabled(multiAddAssistantButton, not gameActive and not rollPending)
+    SetButtonEnabled(multiCoordinatorClearButton, not gameActive and not rollPending)
+    SetButtonEnabled(multiRequestRostersButton, acceptedCount > 0 and not gameActive and not rollPending)
+    SetButtonEnabled(multiRecordCoordinatorButton, not gameActive and not rollPending)
+    SetButtonEnabled(multiAssignNumbersButton,
+        view.coordinatorRosterStatus == "recorded"
+            and allAcceptedRostersReady
+            and not gameActive
+            and not rollPending
+            and not addonQueueBusy)
+    SetButtonEnabled(multiSendNumbersButton,
+        view.assignmentsStatus == "assigned"
+            and not gameActive
+            and not rollPending
+            and not chatQueueBusy
+            and not addonQueueBusy)
+    SetButtonEnabled(multiStartButton,
+        view.assignmentsStatus == "assigned"
+            and (view.totalAssigned or 0) > 0
+            and not gameActive
+            and not rollPending
+            and not addonQueueBusy)
+    SetButtonEnabled(multiStopButton, gameActive and not rollPending)
+
+    SetButtonEnabled(multiAcceptButton, view.pendingInvite ~= nil and not gameActive)
+    SetButtonEnabled(multiRejectButton, view.pendingInvite ~= nil and not gameActive)
+    SetButtonEnabled(multiAssistantClearButton, not gameActive and not rollPending)
+    SetButtonEnabled(multiRecordLocalButton, not gameActive and not rollPending)
+    SetButtonEnabled(multiSendRosterButton,
+        view.acceptedCoordinator ~= nil
+            and localRosterReady
+            and not gameActive
+            and not rollPending
+            and not addonQueueBusy)
 end
 
 local function UpdateSummary()
@@ -406,6 +467,9 @@ local function UpdateSummary()
     if winnerMessageText then
         if invalidRoll then
             winnerMessageText:SetText("Offline winner. Roll again for this round.")
+        elseif multiCoordinatorMode and multiView.manualWinnerCheck then
+            winnerMessageText:SetText("Manual Assistant check required for Raid "
+                .. tostring(multiView.manualWinnerCheck.raidId or "-") .. ".")
         else
             winnerMessageText:SetText("Winner message: " .. (winnerMessage or "-"))
         end
@@ -1108,6 +1172,8 @@ local function CreateControlPage(parent)
 
         if ok then
             SetStatus("Round " .. tostring(result) .. " announced. Roll pending.")
+        elseif type(result) == "string" and string.find(result, "ROUND_ANNOUNCEMENT_FAILED_", 1, true) == 1 then
+            SetStatus("WARNING: ROUND announcement was not sent. Roll cancelled. Check raid chat permissions or restrictions.")
         else
             SetStatus("Cannot roll: " .. tostring(result))
         end
@@ -1411,7 +1477,7 @@ local function CreateRosterPage(parent)
     CreateSeparator(multiCoordinatorFrame, -92)
     CreateLabel(multiCoordinatorFrame, "Assistant character name", 0, -104)
     assistantNameEditBox = CreateEditBox(multiCoordinatorFrame, 0, -132, 258, 24)
-    CreateButton(multiCoordinatorFrame, "Add Assistant", 272, -132, 126, 24, function()
+    multiAddAssistantButton = CreateButton(multiCoordinatorFrame, "Add Assistant", 272, -132, 126, 24, function()
         local ok, result = API.AddMultiRaidAssistant(assistantNameEditBox:GetText())
 
         if ok then
@@ -1434,7 +1500,7 @@ local function CreateRosterPage(parent)
         multiAssistantRows[i] = row
     end
 
-    CreateButton(multiCoordinatorFrame, "Clear Multi", 0, -344, 112, 24, function()
+    multiCoordinatorClearButton = CreateButton(multiCoordinatorFrame, "Clear Multi", 0, -344, 112, 24, function()
         local ok, result = API.ClearMultiRaidSession()
 
         if ok then
@@ -1446,7 +1512,7 @@ local function CreateRosterPage(parent)
         RefreshAll()
     end)
 
-    CreateButton(multiCoordinatorFrame, "Request Rosters", 128, -344, 132, 24, function()
+    multiRequestRostersButton = CreateButton(multiCoordinatorFrame, "Request Rosters", 128, -344, 132, 24, function()
         local ok, result = API.RequestMultiRaidRosters()
 
         if ok then
@@ -1458,7 +1524,7 @@ local function CreateRosterPage(parent)
         RefreshAll()
     end)
 
-    CreateButton(multiCoordinatorFrame, "Record Main Raid", 276, -344, 126, 24, function()
+    multiRecordCoordinatorButton = CreateButton(multiCoordinatorFrame, "Record Main Raid", 276, -344, 126, 24, function()
         local ok, result = API.RecordMultiRaidCoordinatorRoster()
 
         if ok then
@@ -1470,7 +1536,7 @@ local function CreateRosterPage(parent)
         RefreshAll()
     end)
 
-    CreateButton(multiCoordinatorFrame, "Assign Numbers", 0, -378, 132, 24, function()
+    multiAssignNumbersButton = CreateButton(multiCoordinatorFrame, "Assign Numbers", 0, -378, 132, 24, function()
         local ok, result = API.AssignMultiRaidGlobalNumbers()
 
         if ok then
@@ -1482,7 +1548,7 @@ local function CreateRosterPage(parent)
         RefreshAll()
     end)
 
-    CreateButton(multiCoordinatorFrame, "Send Numbers", 148, -378, 112, 24, function()
+    multiSendNumbersButton = CreateButton(multiCoordinatorFrame, "Send Numbers", 148, -378, 112, 24, function()
         local ok, result = API.SendMultiRaidNumbers()
 
         if ok then
@@ -1494,11 +1560,15 @@ local function CreateRosterPage(parent)
         RefreshAll()
     end)
 
-    CreateButton(multiCoordinatorFrame, "Start Multi", 276, -378, 126, 24, function()
-        local ok, result = API.StartMultiRaidGameSession()
+    multiStartButton = CreateButton(multiCoordinatorFrame, "Start Multi", 276, -378, 126, 24, function()
+        local ok, result, warning = API.StartMultiRaidGameSession()
 
         if ok then
-            SetMultiSetupStatus("Multi game started: " .. tostring(result) .. " players.")
+            if warning then
+                SetMultiSetupStatus("WARNING: Multi game started, but an Assistant notification failed: " .. tostring(warning))
+            else
+                SetMultiSetupStatus("Multi game started: " .. tostring(result) .. " players.")
+            end
         else
             SetMultiSetupStatus("Cannot start multi game: " .. tostring(result))
         end
@@ -1506,11 +1576,15 @@ local function CreateRosterPage(parent)
         RefreshAll()
     end)
 
-    CreateButton(multiCoordinatorFrame, "Stop Multi", 0, -412, 112, 24, function()
-        local ok, result = API.StopMultiRaidGameSession()
+    multiStopButton = CreateButton(multiCoordinatorFrame, "Stop Multi", 0, -412, 112, 24, function()
+        local ok, result, warning = API.StopMultiRaidGameSession()
 
         if ok then
-            SetMultiSetupStatus("Multi game stopped.")
+            if warning then
+                SetMultiSetupStatus("WARNING: Multi game stopped, but an Assistant notification failed: " .. tostring(warning))
+            else
+                SetMultiSetupStatus("Multi game stopped.")
+            end
         else
             SetMultiSetupStatus("Cannot stop multi game: " .. tostring(result))
         end
@@ -1531,7 +1605,7 @@ local function CreateRosterPage(parent)
     multiAssistantSummaryText:SetHeight(78)
     multiAssistantSummaryText:SetJustifyV("TOP")
 
-    CreateButton(multiAssistantFrame, "Accept", 0, -124, 92, 24, function()
+    multiAcceptButton = CreateButton(multiAssistantFrame, "Accept", 0, -124, 92, 24, function()
         local ok, result = API.AcceptMultiRaidInvite()
 
         if ok then
@@ -1543,7 +1617,7 @@ local function CreateRosterPage(parent)
         RefreshAll()
     end)
 
-    CreateButton(multiAssistantFrame, "Reject", 108, -124, 92, 24, function()
+    multiRejectButton = CreateButton(multiAssistantFrame, "Reject", 108, -124, 92, 24, function()
         local ok, result = API.RejectMultiRaidInvite()
 
         if ok then
@@ -1555,7 +1629,7 @@ local function CreateRosterPage(parent)
         RefreshAll()
     end)
 
-    CreateButton(multiAssistantFrame, "Clear Multi", 216, -124, 112, 24, function()
+    multiAssistantClearButton = CreateButton(multiAssistantFrame, "Clear Multi", 216, -124, 112, 24, function()
         local ok, result = API.ClearMultiRaidSession()
 
         if ok then
@@ -1567,7 +1641,7 @@ local function CreateRosterPage(parent)
         RefreshAll()
     end)
 
-    CreateButton(multiAssistantFrame, "Record Local Raid", 0, -162, 136, 24, function()
+    multiRecordLocalButton = CreateButton(multiAssistantFrame, "Record Local Raid", 0, -162, 136, 24, function()
         local ok, result = API.RecordMultiRaidLocalRoster()
 
         if ok then
@@ -1579,7 +1653,7 @@ local function CreateRosterPage(parent)
         RefreshAll()
     end)
 
-    CreateButton(multiAssistantFrame, "Send Roster", 152, -162, 112, 24, function()
+    multiSendRosterButton = CreateButton(multiAssistantFrame, "Send Roster", 152, -162, 112, 24, function()
         local ok, result = API.SendMultiRaidRoster()
 
         if ok then

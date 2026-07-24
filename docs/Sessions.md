@@ -1,10 +1,12 @@
 # Game Sessions
 
 MicroGames keeps the active game session in SavedVariables so reloads and window close/open do not reset gameplay state.
+Both Single Raid and Multi Raid restore their current round, winner, invalid-roll state, and recorded session data after `/reload`. Pending scheduled rolls are deliberately cleared.
 
 ## SavedVariables
 
-- Active session: `MicroGamesDB.activeSession`
+- Active Single Raid session: `MicroGamesDB.activeSession`
+- Active Multi Raid session: `MicroGamesDB.multiRaid.activeSession`
 - Completed sessions: `MicroGamesDB.history`
 
 ## Start Game
@@ -38,6 +40,13 @@ The saved session includes:
 
 Rerolls are saved as additional roll entries inside the same round.
 Rewards are saved only after an explicit reward button action calls `addon.API.SendRewardYell(index)`; rounds without a selected reward should display an empty reward value in History.
+
+## Multi Raid Sessions
+
+The Coordinator starts and stops Multi Raid games through `StartMultiRaidGameSession()` and `StopMultiRaidGameSession()`.
+The active session is stored under `MicroGamesDB.multiRaid.activeSession` and restores its round and winner state after `/reload`.
+Assistant start/stop delivery failures are reported as warnings because the Coordinator's local state transition has already completed.
+Winners from Assistant raids are stored with `MANUAL_ASSISTANT_CHECK`; presence verification is performed manually by the responsible Assistant.
 
 ## History
 
