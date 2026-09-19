@@ -1,8 +1,8 @@
-## Interface: 16001
+﻿## Interface: 16001
 ## Title: MicroGames
 ## Notes: Micro games addon for WoW Forever 1.60.1 (Camelot).
 ## Author: hamar
-## Version: 0.2.8-forever-beta1
+## Version: 0.2.8
 ## SavedVariables: MicroGamesDB
 
 Compat.lua
