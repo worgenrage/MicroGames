@@ -336,13 +336,15 @@ end
 
 local function GetCurrentRaidRosterEntries(excludedName)
     local entries = {}
-    local numMembers = GetNumGroupMembers()
+    local maxRaidMembers = MAX_RAID_MEMBERS or 40
 
     if not IsInRaid or not IsInRaid() then
         return entries
     end
 
-    for raidIndex = 1, numMembers do
+    -- Raid roster indices may contain gaps. Scan the full supported raid range
+    -- instead of assuming valid entries are packed into 1..GetNumGroupMembers().
+    for raidIndex = 1, maxRaidMembers do
         local name = GetRaidRosterInfo(raidIndex)
 
         if name and not NamesMatch(name, excludedName) then
@@ -1908,6 +1910,10 @@ BuildNumberMessage = function(number)
 end
 
 local function IsChatMessagingLockedDown()
+    if addon.Compat and addon.Compat.IsChatMessagingLockedDown then
+        return addon.Compat.IsChatMessagingLockedDown()
+    end
+
     local ok, lockedDown
 
     if not C_ChatInfo or not C_ChatInfo.InChatMessagingLockdown then
@@ -2204,6 +2210,16 @@ local function ScheduleRollCountdown(roundNumber, rollMax, delay)
 end
 
 local function ParseRollMessage(message)
+    -- Midnight/Forever chat event payloads can become secret while chat
+    -- restrictions are active. Never parse a secret value.
+    if addon.Compat and addon.Compat.IsSecretValue and addon.Compat.IsSecretValue(message) then
+        return nil
+    end
+
+    if type(message) ~= "string" then
+        return nil
+    end
+
     local roller, roll, minimum, maximum = string.match(message, "^(.-) rolls (%d+) %((%d+)%-(%d+)%)")
 
     if not roll then
@@ -2472,7 +2488,7 @@ if C_ChatInfo and C_ChatInfo.RegisterAddonMessagePrefix then
     monitoringPrefixRegistered = C_ChatInfo.RegisterAddonMessagePrefix(ADDON_MESSAGE_PREFIX) ~= false
 end
 eventFrame:SetScript("OnEvent", function(self, event, message, payload, channel, sender)
-    if event == "CHAT_MSG_SYSTEM" and message then
+    if event == "CHAT_MSG_SYSTEM" then
         HandleSystemMessage(message)
     elseif event == "ADDON_RESTRICTION_STATE_CHANGED" then
         ResumePausedSendQueues()

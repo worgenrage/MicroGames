@@ -1,10 +1,11 @@
 ## Interface: 11509
 ## Title: MicroGames
-## Notes: Micro games addon for WoW Classic Era / Hardcore 1.15.9.
+## Notes: Micro games addon for WoW Classic Era / Hardcore 1.15.9 and WoW Forever 1.60.1.
 ## Author: hamar
-## Version: 0.2.7
+## Version: 0.2.8-forever-beta1
 ## SavedVariables: MicroGamesDB
 
+Compat.lua
 API.lua
 UI.lua
 MicroGames.lua
