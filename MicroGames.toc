@@ -1,4 +1,4 @@
-﻿## Interface: 11509
+## Interface: 11509
 ## Title: MicroGames
 ## Notes: Micro games addon for WoW Classic Era / Hardcore 1.15.9 and WoW Forever 1.60.1.
 ## Author: hamar

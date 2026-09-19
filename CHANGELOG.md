@@ -1,6 +1,7 @@
-﻿# Changelog
+# Changelog
 
 ## 0.2.8
+
 - Added WoW Forever 1.60.1 / Camelot support through `MicroGames_Camelot.toc` (`Interface: 16001`).
 - Added TOC-based Forever detection so Classic Era / Hardcore behavior remains isolated.
 - Added Forever-safe navigation buttons without `CharacterFrameTabButtonTemplate` or `PanelTemplates_*`.
