@@ -6,6 +6,48 @@ addon.UI = addon.UI or {}
 local API = addon.API
 local UI = addon.UI
 
+local IS_FOREVER = addon.isForever == true
+local FOREVER_TAB_GAP = 4
+
+local function CreateNavigationTab(name, parent, text, foreverWidth)
+    local tab
+
+    if IS_FOREVER then
+        -- Forever 1.60.1 does not expose the CharacterFrame tab templates
+        -- used by Classic. Use a normal Blizzard panel button instead.
+        tab = CreateFrame("Button", name, parent, "UIPanelButtonTemplate")
+        tab:SetSize(foreverWidth, 24)
+    else
+        -- Preserve the original Classic Era / Hardcore path exactly.
+        tab = CreateFrame("Button", name, parent, "CharacterFrameTabButtonTemplate")
+    end
+
+    tab:SetText(text)
+    return tab
+end
+
+local function SelectNavigationTab(tab)
+    if IS_FOREVER then
+        tab:LockHighlight()
+    else
+        PanelTemplates_SelectTab(tab)
+    end
+end
+
+local function DeselectNavigationTab(tab)
+    if IS_FOREVER then
+        tab:UnlockHighlight()
+    else
+        PanelTemplates_DeselectTab(tab)
+    end
+end
+
+local function SetNavigationTab(parent, index)
+    if not IS_FOREVER then
+        PanelTemplates_SetTab(parent, index)
+    end
+end
+
 local FRAME_WIDTH = 540
 local FRAME_HEIGHT = 640
 local COLLAPSED_FRAME_WIDTH = 220
@@ -1056,10 +1098,10 @@ local function SetCollapsed(value)
         tab = tabs[index]
 
         if tab.pageName == currentPageName then
-            PanelTemplates_SelectTab(tab)
-            PanelTemplates_SetTab(frame, index)
+            SelectNavigationTab(tab)
+            SetNavigationTab(frame, index)
         else
-            PanelTemplates_DeselectTab(tab)
+            DeselectNavigationTab(tab)
         end
     end
 
@@ -1094,14 +1136,14 @@ local function ShowPage(pageName)
     for i = 1, #tabs do
         if tabs[i].pageName == currentPageName then
             index = i
-            PanelTemplates_SelectTab(tabs[i])
+            SelectNavigationTab(tabs[i])
         else
-            PanelTemplates_DeselectTab(tabs[i])
+            DeselectNavigationTab(tabs[i])
         end
     end
 
     if index then
-        PanelTemplates_SetTab(frame, index)
+        SetNavigationTab(frame, index)
     end
 
     RefreshAll()
@@ -2181,7 +2223,7 @@ function UI.Create()
     pages.monitoring = CreateMonitoringPage(frame)
     pages.settings = CreateSettingsPage(frame)
 
-    tabs[1] = CreateFrame("Button", "MicroGamesTabControl", frame, "CharacterFrameTabButtonTemplate")
+    tabs[1] = CreateNavigationTab("MicroGamesTabControl", frame, "Control", 72)
     tabs[1]:SetPoint("TOPLEFT", frame, "TOPLEFT", 18, -34)
     tabs[1]:SetText("Control")
     tabs[1].pageName = "control"
@@ -2189,47 +2231,49 @@ function UI.Create()
         ShowPage("control")
     end)
 
-    tabs[2] = CreateFrame("Button", "MicroGamesTabRoster", frame, "CharacterFrameTabButtonTemplate")
-    tabs[2]:SetPoint("LEFT", tabs[1], "RIGHT", -14, 0)
+    tabs[2] = CreateNavigationTab("MicroGamesTabRoster", frame, "Setup", 64)
+    tabs[2]:SetPoint("LEFT", tabs[1], "RIGHT", IS_FOREVER and FOREVER_TAB_GAP or -14, 0)
     tabs[2]:SetText("Setup")
     tabs[2].pageName = "roster"
     tabs[2]:SetScript("OnClick", function()
         ShowPage("roster")
     end)
 
-    tabs[3] = CreateFrame("Button", "MicroGamesTabRewards", frame, "CharacterFrameTabButtonTemplate")
-    tabs[3]:SetPoint("LEFT", tabs[2], "RIGHT", -14, 0)
+    tabs[3] = CreateNavigationTab("MicroGamesTabRewards", frame, "Rewards", 78)
+    tabs[3]:SetPoint("LEFT", tabs[2], "RIGHT", IS_FOREVER and FOREVER_TAB_GAP or -14, 0)
     tabs[3]:SetText("Rewards")
     tabs[3].pageName = "rewards"
     tabs[3]:SetScript("OnClick", function()
         ShowPage("rewards")
     end)
 
-    tabs[4] = CreateFrame("Button", "MicroGamesTabHistory", frame, "CharacterFrameTabButtonTemplate")
-    tabs[4]:SetPoint("LEFT", tabs[3], "RIGHT", -14, 0)
+    tabs[4] = CreateNavigationTab("MicroGamesTabHistory", frame, "History", 74)
+    tabs[4]:SetPoint("LEFT", tabs[3], "RIGHT", IS_FOREVER and FOREVER_TAB_GAP or -14, 0)
     tabs[4]:SetText("History")
     tabs[4].pageName = "history"
     tabs[4]:SetScript("OnClick", function()
         ShowPage("history")
     end)
 
-    tabs[5] = CreateFrame("Button", "MicroGamesTabMonitoring", frame, "CharacterFrameTabButtonTemplate")
-    tabs[5]:SetPoint("LEFT", tabs[4], "RIGHT", -14, 0)
+    tabs[5] = CreateNavigationTab("MicroGamesTabMonitoring", frame, "Monitoring", 96)
+    tabs[5]:SetPoint("LEFT", tabs[4], "RIGHT", IS_FOREVER and FOREVER_TAB_GAP or -14, 0)
     tabs[5]:SetText("Monitoring")
     tabs[5].pageName = "monitoring"
     tabs[5]:SetScript("OnClick", function()
         ShowPage("monitoring")
     end)
 
-    tabs[6] = CreateFrame("Button", "MicroGamesTabSettings", frame, "CharacterFrameTabButtonTemplate")
-    tabs[6]:SetPoint("LEFT", tabs[5], "RIGHT", -14, 0)
+    tabs[6] = CreateNavigationTab("MicroGamesTabSettings", frame, "Settings", 76)
+    tabs[6]:SetPoint("LEFT", tabs[5], "RIGHT", IS_FOREVER and FOREVER_TAB_GAP or -14, 0)
     tabs[6]:SetText("Settings")
     tabs[6].pageName = "settings"
     tabs[6]:SetScript("OnClick", function()
         ShowPage("settings")
     end)
 
-    PanelTemplates_SetNumTabs(frame, 6)
+    if not IS_FOREVER then
+        PanelTemplates_SetNumTabs(frame, 6)
+    end
     ShowPage("control")
 
     tradeEventFrame = CreateFrame("Frame")

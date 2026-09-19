@@ -27,9 +27,13 @@ The code is still licensed for general use under MIT. Other guilds may use, modi
 
 ## Target Client
 
-- WoW Classic Era / Hardcore
-- Interface: `11509`
+- WoW Classic Era / Hardcore — Interface `11509`
+- WoW Forever 1.60.1 / Camelot — Interface `16001`
 - English client roll text only
+
+Forever uses the Midnight-era addon API but identifies as Mainline at runtime.
+MicroGames therefore uses a dedicated `MicroGames_Camelot.toc` to enable the
+Forever compatibility path without changing the Classic behavior.
 
 The addon relies on WoW's normal raid APIs and does not use external runtime dependencies.
 
@@ -72,9 +76,13 @@ The addon folder should contain:
 ```text
 API.lua
 CHANGELOG.md
+Compat.lua
+CompatForever.lua
+FOREVER_API_AUDIT.md
 LICENSE
 MicroGames.lua
 MicroGames.toc
+MicroGames_Camelot.toc
 README.md
 UI.lua
 ```

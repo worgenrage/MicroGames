@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Added WoW Forever 1.60.1 / Camelot support through `MicroGames_Camelot.toc` (`Interface: 16001`).
+- Added TOC-based Forever detection so Classic Era / Hardcore behavior remains isolated.
+- Added Forever-safe navigation buttons without `CharacterFrameTabButtonTemplate` or `PanelTemplates_*`.
+- Added secret-value protection for `CHAT_MSG_SYSTEM` `/roll` parsing.
+- Hardened raid roster scanning against non-contiguous raid indices.
+
 ## 0.2.7
 
 - Updated the Single Raid Control status after roll resolution to show the winner, offline reroll requirement, or roll timeout instead of leaving the stale pending message visible.
