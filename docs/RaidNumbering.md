@@ -15,6 +15,7 @@ In Single Raid mode, the game master must first run the GM positioning step from
 ## Rules
 
 - Raid roster indexes are not stable game identifiers.
+- Snapshots and online winner checks scan `1..MAX_RAID_MEMBERS` (fallback 40), including occupied slots beyond `GetNumGroupMembers()` when indices have gaps.
 - If a player leaves, joins, or the roster changes, WoW raid indexes can shift.
 - MicroGames assigns stable `gameNumber` values from a snapshot of the raid roster.
 - The snapshot excludes the local player running the addon, so the game master does not receive an MG number.

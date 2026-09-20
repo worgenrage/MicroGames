@@ -1,6 +1,6 @@
 # MicroGames
 
-MicroGames is a World of Warcraft Classic Era / Hardcore addon for running small raid games during guild events.
+MicroGames is a World of Warcraft addon for running small raid games during guild events on Classic Era / Hardcore and WoW Forever 1.60.1.
 
 It was built specifically for the **DICE** guild workflow, with the game master using the addon to prepare the raid, assign stable player numbers, run `/roll` based rounds, announce winners, and keep a local history of completed sessions.
 
@@ -37,6 +37,8 @@ Forever compatibility path without changing the Classic behavior.
 
 The addon relies on WoW's normal raid APIs and does not use external runtime dependencies.
 
+The Forever port uses the same Single Raid and Multi Raid workflows. Chat restrictions can pause queued messages, and restricted roll results cannot be read by the addon. If a roll times out, wait for restrictions to end and reroll the current round. See [the compatibility audit](FOREVER_API_AUDIT.md) for the checked build, source evidence, and in-game validation still required.
+
 ## Basic Single Raid Flow
 
 1. Join or form the raid as the game master.
@@ -70,6 +72,8 @@ For normal addon installation, extract the release ZIP so the folder layout is:
 ```text
 World of Warcraft/_classic_era_/Interface/AddOns/MicroGames/
 ```
+
+For Forever, install the same `MicroGames` folder in the **Forever client's** `Interface/AddOns/` directory, selected through the launcher's installation location. Keep both TOCs and all Lua files together; the client selects its matching TOC. Do not rename `MicroGames_Camelot.toc` over the Classic TOC.
 
 The addon folder should contain:
 

@@ -30,6 +30,7 @@ Rounds do not advance while the addon is loading.
 - After the roll result is detected, the addon stores the winner number and the matching recorded player name.
 - Roll detection should only accept the game master's own roll while a round roll is pending.
 - Roll detection only supports English client `CHAT_MSG_SYSTEM` roll messages.
+- On Forever, system chat text can be secret during chat messaging lockdown. Check `issecretvalue` before string operations and ignore unreadable/non-string payloads. The existing timeout clears the pending roll; the GM can retry the same round once restrictions end. Never synthesize a winner from a hidden result.
 - Round announcements and roll results are recorded into the active game session when one exists.
 - The winner is resolved from the recorded raid numbering snapshot.
 - If the resolved snapshot player is offline in the current live raid roster, the roll is recorded as invalid and the current round must be rerolled.
@@ -38,6 +39,7 @@ Rounds do not advance while the addon is loading.
 - `MicroGamesDB.autoAnnounceWinnerEnabled` persists the default-off Single Raid automatic winner-message setting.
 - When enabled, a valid online Single Raid roll queues `{rt1} ROUND X WINNER: [PlayerName] - MG #N! {rt1}` in raid chat and whispers the winner message.
 - Automatic winner messages use the throttled visible-chat queue, pause during chat lockdown, and report full success or partial/complete failure in Control status.
+- Queue recovery rechecks lockdown on the next timer turn after `ADDON_RESTRICTION_STATE_CHANGED`, not inside the restriction-transition event.
 - Invalid/offline rolls, timeouts, Multi Raid results, and winner state restored after `/reload` do not trigger automatic messages.
 - Reward yell templates can be selected manually after a winner is detected.
 - Reward yells are never automatic.

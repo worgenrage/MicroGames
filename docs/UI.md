@@ -14,6 +14,8 @@ Coordinator Setup can record the main raid, assign global numbers across receive
 
 ## Tabs
 
+Both clients expose the same pages. Classic uses `CharacterFrameTabButtonTemplate` and `PanelTemplates_*`; Forever uses highlighted `UIPanelButtonTemplate` buttons with explicit spacing. The mode selector retains `UIDropDownMenu`, which is still present in the audited Forever source. See `FOREVER_API_AUDIT.md` for the pinned build and manual UI checks.
+
 - Control: Round roll, winner status, winner actions, reward yells, and compact setup controls.
 - Setup: Prepares the live raid layout, shows the recorded name and number snapshot from `StartRaidNumbering()`, and provides setup controls.
 - Rewards: Edits reward yell templates and provides a secondary reward view.

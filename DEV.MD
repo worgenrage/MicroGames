@@ -2,18 +2,24 @@
 
 ## Project State
 
-MicroGames is a WoW Classic Era / Hardcore 1.15.9 addon.
+MicroGames supports WoW Classic Era / Hardcore 1.15.9 and WoW Forever 1.60.1 / Camelot.
 
-- TOC interface: `11509`
+- TOC interfaces: `11509` (Classic Era / Hardcore), `16001` (Forever)
 - Lua target: Blizzard WoW addon sandbox, Lua 5.1 subset
-- Language server flavor: `classic_era`
+- Language server flavor: `classic_era`; validate Forever differences against the pinned Blizzard sources in `FOREVER_API_AUDIT.md`
 - Supported client language: English only
 - Main files:
+  - `Compat.lua`
+  - `CompatForever.lua` (Camelot TOC only)
   - `API.lua`
   - `UI.lua`
   - `MicroGames.lua`
 
 ## Load And Commands
+
+Both clients load `Compat.lua`, `API.lua`, `UI.lua`, and `MicroGames.lua` in that order. The Camelot TOC inserts `CompatForever.lua` immediately after `Compat.lua`. This sets the Forever flag before UI initialization; no project-ID guessing is used. SavedVariables and the addon-message protocol are shared, without any cross-client or cross-realm connectivity guarantee.
+
+Forever uses ordinary panel buttons for navigation. Classic keeps its character tabs. Existing frame, dropdown, timer, raid and chat APIs are retained where supported by the client sources.
 
 - The addon registers:
   - `/mg`
@@ -197,6 +203,7 @@ Rules:
 
 - Broadcasts go to `RAID` when the player is in a raid, otherwise `PARTY` when grouped.
 - No broadcast is sent while solo.
+- Prefix registration must succeed before Monitoring or Multi Raid can send. Current Classic and Forever return `Enum.RegisterAddonMessagePrefixResult`; only `Success` and `DuplicatePrefix` are accepted, alongside legacy boolean success.
 - The user who presses `Start GM Live` is the GM broadcaster.
 - `Start GM Live` requires an active game session.
 - Stopping the game session stops GM live monitoring.
@@ -448,6 +455,8 @@ These settings persist through SavedVariables.
 - `LICENSE`: MIT license and author attribution
 - `DEV.MD`: current development state summary
 - `docs/ReleasePackage.md`: recommended release ZIP contents
+- `FOREVER_API_AUDIT.md`: dated client API audit, pinned source links, validation limits, and in-game test checklist
+- `tests/compatibility.lua`: standalone mocked regression tests; excluded from addon TOCs and WoW-only language-server diagnostics
 - `docs/RaidNumbering.md`: raid numbering model
 - `docs/Rounds.md`: round/roll/reroll/winner model
 - `docs/Sessions.md`: active session and history persistence
@@ -461,6 +470,14 @@ From project root:
 & 'C:\Users\hamar\AppData\Roaming\JetBrains\Rider2026.1\plugins\wowlua-ls\server\win32-x64\wowlua_ls.exe' check .
 git diff --check
 ```
+
+Run the standalone regression suite from the repository root with Lua 5.1+:
+
+```text
+lua tests/compatibility.lua
+```
+
+If no Lua executable is installed, the audit also runs with `npm.cmd exec --yes --package=fengari-node-cli@0.1.0 -- fengari tests/compatibility.lua`. Fengari uses Lua 5.3 semantics; this is a mocked logic check, not proof of WoW Lua 5.1 or client security behavior. Keep the Classic language-server check and the in-game checks in `FOREVER_API_AUDIT.md` as separate validation steps.
 
 ## Known Next Steps
 

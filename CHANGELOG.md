@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+## 0.2.9
+
+- Audited all runtime Lua files and both TOCs against WoW Forever 1.60.1.69913 UI/API sources, with Classic Era 1.15.9 compatibility retained.
+- Fixed addon-message prefix registration to handle success, duplicate-prefix, and error enum results instead of treating every numeric result as success.
+- Fixed online winner checks to find players in non-contiguous raid roster slots.
+- Deferred send-queue recovery until after restriction-change event dispatch so newly activating restrictions are respected.
+- Fixed the Assistant number-whisper queue's local function binding and the Multi Raid winner handler's missing local state.
+- Added mocked compatibility regression tests and updated client support, installation, packaging, development rules, and the source-linked API audit.
+
 ## 0.2.8
 
 - Added WoW Forever 1.60.1 / Camelot support through `MicroGames_Camelot.toc` (`Interface: 16001`).

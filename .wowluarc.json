@@ -2,6 +2,7 @@
   "flavors": ["classic_era"],
   "ignore": [
     ".git/",
-    ".idea/"
+    ".idea/",
+    "tests/"
   ]
 }

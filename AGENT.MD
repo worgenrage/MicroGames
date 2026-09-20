@@ -2,12 +2,15 @@
 
 ## Target Runtime
 
-- Target client: WoW Classic Era / Hardcore 1.15.9.
+- Target clients: WoW Classic Era / Hardcore 1.15.9 and WoW Forever 1.60.1 / Camelot.
 - Supported client language: English only.
-- TOC interface/API compatibility: `## Interface: 11509`.
+- TOC interface/API compatibility: `MicroGames.toc` uses `11509`; `MicroGames_Camelot.toc` uses `16001`.
 - `Interface: 11509` is the WoW client/interface API compatibility number, not a Lua version.
 - Lua target: Blizzard WoW addon sandbox, Lua 5.1 subset.
-- Language Server flavor: `classic_era`.
+- Language Server flavor: `classic_era` (shared-code baseline, not a Forever compatibility certification).
+- Both TOCs load `Compat.lua` first. Only the Camelot TOC loads `CompatForever.lua`, before API/UI initialization.
+- Select the Forever path through the TOC-loaded flag, not `WOW_PROJECT_ID`; Forever uses the Mainline API family.
+- Keep the source/build evidence and remaining in-game checks in `FOREVER_API_AUDIT.md` current.
 
 ## Lua Compatibility Rules
 
@@ -23,7 +26,10 @@
   - normal Lua `require` / `package`
 - Load order is controlled by the `.toc` file.
 - Use ASCII-only identifiers, file/module names, slash command tokens, SavedVariables names, and constants.
-- Use only WoW APIs available in Classic Era 1.15.9.
+- Shared code must work on both target clients. Isolate client-specific API/UI behavior behind the compatibility layer or explicit Forever checks.
+- Check `issecretvalue` before inspecting restricted chat payloads; do not parse or infer hidden roll results.
+- Prefix registration accepts boolean success on older clients or `Success` / `DuplicatePrefix` enum results on current clients; numeric errors are not success.
+- Recheck chat lockdown after `ADDON_RESTRICTION_STATE_CHANGED` dispatch, since restrictions may be about to activate during the event.
 
 ## WoW Lua LS
 
@@ -58,6 +64,7 @@
 - Store assignments by player name and by game number.
 - A player leaving the raid does not free or shift their assigned game number.
 - New players do not receive a number automatically during an active game unless explicit game logic is added.
+- Scan the full supported raid-index range for both snapshots and online winner checks; roster count is not an index upper bound.
 - Stop should mark numbering inactive without clearing recorded assignments.
 - Reset should clear recorded assignments.
 - Number whispers must use the recorded snapshot from `StartRaidNumbering()`, not the current live raid roster.

@@ -41,6 +41,7 @@ local HandleMultiRaidRollResult
 local StartChatQueueTicker
 local StartAddonQueueTicker
 local ResumePausedSendQueues
+local ResetChatQueue
 local defaultRewardTemplates = {
     "10 GOLD!",
     "20 GOLD!",
@@ -2071,7 +2072,7 @@ QueueNumberWhisper = function(target, message, label, onSent, onFailed)
     return QueueVisibleChatMessage(message, "WHISPER", target, label or "Number whispers", onSent, onFailed)
 end
 
-local function ResetChatQueue(label, onComplete)
+ResetChatQueue = function(label, onComplete)
     StopQueueTicker(chatSendQueue)
     chatSendQueue.items = {}
     chatSendQueue.total = 0
@@ -2267,13 +2268,17 @@ NamesMatch = function(left, right)
 end
 
 IsSnapshotPlayerOnline = function(name)
-    local numMembers = GetNumGroupMembers()
+    local maxRaidMembers = MAX_RAID_MEMBERS or 40
 
     if not name or name == "" then
         return false
     end
 
-    for raidIndex = 1, numMembers do
+    if not IsInRaid or not IsInRaid() then
+        return false
+    end
+
+    for raidIndex = 1, maxRaidMembers do
         local rosterName, _, _, _, _, _, _, online = GetRaidRosterInfo(raidIndex)
 
         if NamesMatch(rosterName, name) then
@@ -2484,14 +2489,14 @@ eventFrame:RegisterEvent("CHAT_MSG_SYSTEM")
 eventFrame:RegisterEvent("CHAT_MSG_ADDON")
 eventFrame:RegisterEvent("GROUP_ROSTER_UPDATE")
 eventFrame:RegisterEvent("ADDON_RESTRICTION_STATE_CHANGED")
-if C_ChatInfo and C_ChatInfo.RegisterAddonMessagePrefix then
-    monitoringPrefixRegistered = C_ChatInfo.RegisterAddonMessagePrefix(ADDON_MESSAGE_PREFIX) ~= false
-end
+monitoringPrefixRegistered = addon.Compat.RegisterAddonMessagePrefix(ADDON_MESSAGE_PREFIX)
 eventFrame:SetScript("OnEvent", function(self, event, message, payload, channel, sender)
     if event == "CHAT_MSG_SYSTEM" then
         HandleSystemMessage(message)
     elseif event == "ADDON_RESTRICTION_STATE_CHANGED" then
-        ResumePausedSendQueues()
+        -- During this event restrictions can still appear inactive even when
+        -- they are about to activate. Query again after event dispatch.
+        C_Timer.After(0, ResumePausedSendQueues)
     elseif event == "GROUP_ROSTER_UPDATE" then
         MarkAssistantRosterStale()
         if not VerifyPendingGMMove() then
@@ -3855,6 +3860,7 @@ local function ResolveMultiRaidWinner(number)
 end
 
 HandleMultiRaidRollResult = function(roundNumber, roll, rollMax)
+    local state = EnsureMultiRaidState()
     local winner = ResolveMultiRaidWinner(roll)
     local resultMessage = "Coordinator rolled " .. tostring(roll) .. " (1-" .. tostring(rollMax) .. ")"
 
