@@ -2,7 +2,10 @@
 
 ## Redesign direction (2026-10-12)
 
-The redesign targets current WoW Forever APIs first, not Classic Era 1.15.x.
+The redesigned release targets only current WoW Forever, not Classic Era 1.15.x.
+The UI and supporting code may be rewritten completely; the old architecture is
+not a constraint. Keep legacy Classic distribution separate as described in
+[release policy](docs/ReleasePackage.md).
 The verified source baseline is **1.60.1.70338**, pinned to
 `943764493e6b16d63ded3ab304150d1f05e58b57`. See
 [Forever API baseline](docs/ForeverApiBaseline.md) and

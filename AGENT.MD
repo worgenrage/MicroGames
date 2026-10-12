@@ -2,6 +2,12 @@
 
 ## Redesign target policy (2026-10-12)
 
+- The user explicitly permits a complete UI/UX and supporting-code rewrite.
+  Preserve required gameplay behavior and data deliberately, not old structure.
+  Planning-only instructions still apply until implementation is requested.
+- The redesigned release is **Forever-only**, not merely Forever-first. Do not
+  advertise, package, or tag it as a Classic update. Keep the legacy Classic
+  release available. Follow `docs/ReleasePackage.md` for distribution separation.
 - For the redesign, the primary API baseline is current WoW Forever, not Classic
   Era 1.15.x. This policy supersedes the legacy shared-code baseline below where
   they conflict. Classic compatibility must not dictate the new UI architecture.

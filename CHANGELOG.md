@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Recorded that the redesign may replace the UI and supporting code completely and will be distributed exclusively for WoW Forever, preserving the legacy Classic release separately.
 - Documented the Single Raid UI redesign plan and preserved the 0.2.9 source baseline on a dedicated archive branch.
 - Set current WoW Forever APIs as the redesign's primary target instead of Classic Era 1.15.x; pinned and downloaded the 1.60.1.70338 API/UI reference. Runtime migration is not yet implemented.
 

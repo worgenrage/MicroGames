@@ -5,12 +5,13 @@ Interface **16001**, Mainline family / Camelot game type.
 
 ## Development policy
 
-The redesigned addon is Forever-first. Classic Era 1.15.x APIs are no longer the
+The redesigned addon is Forever-only. Classic Era 1.15.x APIs are no longer the
 design baseline. The archived 0.2.9 release actually targeted Classic **1.15.9**
 (not 1.15.8) alongside Forever; that historical support remains preserved.
 Modern components confirmed in the Forever export may replace Classic UI and
-compatibility paths. Continued Classic support is a separate release decision,
-not a reason to restrict the redesign to legacy APIs.
+compatibility paths. The user explicitly excludes Classic from the redesigned
+release; preserve the legacy release separately. A complete UI and supporting
+code rewrite is allowed. See [release policy](ReleasePackage.md).
 
 This is a reference refresh and design decision, not an implemented runtime
 migration or a full compatibility audit of build 70338.

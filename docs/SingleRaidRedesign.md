@@ -2,7 +2,7 @@
 
 Status: design proposal only. No runtime changes implemented.
 
-Primary API target: current WoW Forever. The verified reference as of 2026-10-12
+Exclusive release target: current WoW Forever. The verified reference as of 2026-10-12
 is **1.60.1.70338**; see [Forever API baseline](ForeverApiBaseline.md).
 Classic Era 1.15.x is no longer the design baseline. Modern Forever components
 may replace Classic compatibility paths during implementation when source and
@@ -33,6 +33,16 @@ working changes, then use `git switch --detach v0.2.9`. Return to design work wi
 `git switch design/single-raid-ui`. Do not use a hard reset for routine recovery.
 
 ## Scope
+
+The UI and supporting implementation may be rewritten from scratch. Reuse code
+only when it helps the new design; the old file layout, UI plumbing, and Classic
+compatibility paths are not constraints. Preserve gameplay invariants and plan
+legacy Forever SavedVariables handling explicitly. This permission defines the
+implementation approach; this document remains planning-only for now.
+
+The new release is Forever-only. Keep the archived Classic-capable release and
+its CurseForge files intact. Follow [release policy](ReleasePackage.md) so the
+new artifact is not offered as an update for Classic installations.
 
 Prioritize the Single Raid workflow that the user reports worked in practice.
 Remove reward management and reward actions from the new workflow. Keep winner
@@ -122,9 +132,8 @@ ending a game must not require Reset All.
 - Restore active sessions after reload; do not restore scheduled pending rolls.
 - Rewards and winner announcements are not prerequisites for another round.
 - Repeat winners remain allowed. A one-win-per-player mode is outside this phase.
-- Preserve Forever secret-value and restriction safeguards. Classic support is
-  not a constraint on the new architecture; retain it only where compatible
-  without undermining the Forever-first design, and document release support.
+- Preserve Forever secret-value and restriction safeguards. The redesigned
+  release does not support Classic; its legacy release remains separate.
 
 Investigate whether the GM move serves a guild requirement beyond numbering.
 Initially retain it inside preparation. Removing it requires a targeted review
