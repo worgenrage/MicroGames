@@ -2,6 +2,12 @@
 
 Status: design proposal only. No runtime changes implemented.
 
+Primary API target: current WoW Forever. The verified reference as of 2026-10-12
+is **1.60.1.70338**; see [Forever API baseline](ForeverApiBaseline.md).
+Classic Era 1.15.x is no longer the design baseline. Modern Forever components
+may replace Classic compatibility paths during implementation when source and
+client validation support the change.
+
 ## Recovery baseline
 
 - Baseline version: 0.2.9.
@@ -116,7 +122,9 @@ ending a game must not require Reset All.
 - Restore active sessions after reload; do not restore scheduled pending rolls.
 - Rewards and winner announcements are not prerequisites for another round.
 - Repeat winners remain allowed. A one-win-per-player mode is outside this phase.
-- Preserve shared Classic/Forever compatibility and secret-value safeguards.
+- Preserve Forever secret-value and restriction safeguards. Classic support is
+  not a constraint on the new architecture; retain it only where compatible
+  without undermining the Forever-first design, and document release support.
 
 Investigate whether the GM move serves a guild requirement beyond numbering.
 Initially retain it inside preparation. Removing it requires a targeted review
@@ -124,7 +132,7 @@ and a deliberate workflow decision, not just a visual redesign.
 
 ## Implementation sequence and acceptance
 
-1. Build sidebar and page layout; verify both client navigation paths and scaling.
+1. Build sidebar and page layout using verified Forever components and scaling.
 2. Remove reward controls; preserve loading of existing SavedVariables/history.
 3. Add guided preparation and the active-game state presentation.
 4. Improve Players, History, Settings, and actionable status messages.

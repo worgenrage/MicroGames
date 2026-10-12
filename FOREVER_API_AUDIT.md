@@ -1,5 +1,11 @@
 # MicroGames - WoW Forever 1.60.1 compatibility audit
 
+> Historical 0.2.9 audit. For the redesign, the newer verified reference is
+> **1.60.1.70338** (checked 2026-10-12); see
+> [the current baseline](docs/ForeverApiBaseline.md). The findings and validation
+> results below remain evidence for the original build, not a completed audit
+> or live-client validation of the newer build.
+
 Audit date: 2026-09-20. Addon baseline: 0.2.8, commit `3a1f6bc`.
 The fixes described below are included in MicroGames **0.2.9**.
 

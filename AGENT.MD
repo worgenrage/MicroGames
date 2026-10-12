@@ -1,5 +1,23 @@
 # MicroGames Agent Notes
 
+## Redesign target policy (2026-10-12)
+
+- For the redesign, the primary API baseline is current WoW Forever, not Classic
+  Era 1.15.x. This policy supersedes the legacy shared-code baseline below where
+  they conflict. Classic compatibility must not dictate the new UI architecture.
+- Verified reference: Forever 1.60.1.70338, source commit
+  `943764493e6b16d63ded3ab304150d1f05e58b57`. See
+  `docs/ForeverApiBaseline.md` for source provenance, local reference archive,
+  update procedure, and implementation candidates.
+- Prefer APIs and UI components evidenced in that Forever export. Mainline/Retail
+  documentation alone is not proof of Forever availability or permitted use.
+- Preserve secret-value, chat restriction, and session integrity safeguards.
+- The existing `classic_era` language-server configuration is legacy tooling,
+  not the redesign's API specification. Verify a supported Forever-compatible
+  tooling setup before changing configuration; never invent a flavor name.
+- The archived 0.2.9 release retains its original dual-client contract. Changes
+  to runtime code, TOCs, or data formats belong to the implementation phase.
+
 ## Target Runtime
 
 - Target clients: WoW Classic Era / Hardcore 1.15.9 and WoW Forever 1.60.1 / Camelot.

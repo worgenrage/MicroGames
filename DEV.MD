@@ -1,5 +1,17 @@
 # MicroGames Development Notes
 
+## Redesign direction (2026-10-12)
+
+The redesign targets current WoW Forever APIs first, not Classic Era 1.15.x.
+The verified source baseline is **1.60.1.70338**, pinned to
+`943764493e6b16d63ded3ab304150d1f05e58b57`. See
+[Forever API baseline](docs/ForeverApiBaseline.md) and
+[Single Raid redesign](docs/SingleRaidRedesign.md).
+
+The sections below describe the existing 0.2.9 runtime. Its Classic Era 1.15.9
+support and `classic_era` language-server setting do not constrain the redesign
+to old Classic APIs. Runtime implementation and tooling migration are pending.
+
 ## Project State
 
 MicroGames supports WoW Classic Era / Hardcore 1.15.9 and WoW Forever 1.60.1 / Camelot.
